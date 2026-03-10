@@ -78,26 +78,35 @@ class AdcEntity(Entity, Generic[AdcDeviceT]):
         return self._hub.connected and not self._device.is_disabled
 
     async def async_added_to_hass(self) -> None:
-        """Subscribe to resource update events for this device."""
+        """Subscribe to resource update and connection events for this device."""
         self._unsubscribe = self._hub.bridge.event_broker.subscribe(
             [EventBrokerTopic.RESOURCE_UPDATED],
             self._handle_update,
             device_id=self._device.resource_id,
         )
+        # Also subscribe to connection events so entities become available as soon
+        # as the WebSocket connects (hub.connected transitions False → True).
+        self._unsubscribe_connection = self._hub.bridge.event_broker.subscribe(
+            [EventBrokerTopic.CONNECTION_EVENT],
+            self._handle_connection_change,
+        )
 
     async def async_will_remove_from_hass(self) -> None:
         """Unsubscribe from events when entity is removed."""
-        if hasattr(self, "_unsubscribe") and self._unsubscribe is not None:
-            self._unsubscribe()
-            self._unsubscribe = None
+        for attr in ("_unsubscribe", "_unsubscribe_connection"):
+            unsub = getattr(self, attr, None)
+            if unsub is not None:
+                unsub()
+                setattr(self, attr, None)
 
     def _handle_update(self, message: object) -> None:
-        """Push updated state to Home Assistant.
+        """Push updated state to Home Assistant on device resource events."""
+        self.async_write_ha_state()
 
-        Called synchronously by the EventBroker whenever this device's
-        ``RESOURCE_UPDATED`` event fires.  The EventBroker dispatches from
-        the WebSocket processor task, which runs on the same asyncio event
-        loop as Home Assistant, so ``async_write_ha_state()`` is safe to
-        call directly here without any scheduling.
+    def _handle_connection_change(self, message: object) -> None:
+        """Push state when WebSocket connection status changes.
+
+        This ensures entities transition from unavailable → available as soon
+        as the WebSocket connects after initial setup.
         """
         self.async_write_ha_state()

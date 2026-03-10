@@ -77,18 +77,24 @@ class _AdcSensorBase(SensorEntity):
         )
 
     async def async_added_to_hass(self) -> None:
-        """Subscribe to resource update events."""
+        """Subscribe to resource update and connection events."""
         self._unsubscribe = self._hub.bridge.event_broker.subscribe(
             [EventBrokerTopic.RESOURCE_UPDATED],
             self._handle_update,
             device_id=self._device.resource_id,
         )
+        self._unsubscribe_connection = self._hub.bridge.event_broker.subscribe(
+            [EventBrokerTopic.CONNECTION_EVENT],
+            self._handle_update,
+        )
 
     async def async_will_remove_from_hass(self) -> None:
         """Unsubscribe on removal."""
-        if self._unsubscribe is not None:
-            self._unsubscribe()
-            self._unsubscribe = None
+        for attr in ("_unsubscribe", "_unsubscribe_connection"):
+            unsub = getattr(self, attr, None)
+            if unsub is not None:
+                unsub()
+                setattr(self, attr, None)
 
     def _handle_update(self, message: object) -> None:
         """Handle state update from EventBroker.
