@@ -1,0 +1,14 @@
+{
+  "domain": "alarmdotcom_ha",
+  "name": "Alarm.com (pyadc)",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/example/pyadc",
+  "homekit": {},
+  "integration_type": "hub",
+  "iot_class": "cloud_push",
+  "loggers": ["pyadc"],
+  "quality_scale": "silver",
+  "requirements": ["pyadc==0.1.0"],
+  "version": "2025.1.0"
+}

@@ -1,0 +1,46 @@
+{
+  "title": "Alarm.com (pyadc)",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Alarm.com",
+        "description": "Enter your Alarm.com account credentials.",
+        "data": {
+          "username": "Username (email)",
+          "password": "Password"
+        }
+      },
+      "two_factor": {
+        "title": "Two-Factor Authentication",
+        "description": "Enter the verification code sent to your registered device.",
+        "data": {
+          "two_factor_code": "Verification Code"
+        }
+      },
+      "trust_device": {
+        "title": "Trust This Device",
+        "description": "Would you like to trust this device to skip two-factor authentication in the future?",
+        "data": {
+          "trust_device": "Trust this device"
+        }
+      },
+      "reauth": {
+        "title": "Re-authenticate Alarm.com",
+        "description": "Your session has expired. Please re-enter your password.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid username or password.",
+      "cannot_connect": "Unable to connect to Alarm.com. Please try again.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This Alarm.com account is already configured.",
+      "must_configure_mfa": "Your Alarm.com account requires two-factor authentication to be configured. Please log in at alarm.com and set up 2FA first.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  }
+}
