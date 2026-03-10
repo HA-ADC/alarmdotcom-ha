@@ -1,0 +1,49 @@
+title: Alarm.com
+views:
+  - title: Security
+    icon: mdi:shield-home
+    cards:
+      - type: tile
+        entity: alarm_control_panel.panel_panel
+        state_color: true
+        name: Security Panel
+
+      - type: horizontal-stack
+        cards:
+          - type: tile
+            entity: lock.front_door_lock_front_door_lock
+            state_color: true
+            name: Front Door
+          - type: tile
+            entity: lock.back_door_lock_back_door_lock
+            state_color: true
+            name: Back Door
+
+      - type: tile
+        entity: light.front_porch_light_front_porch_light
+        state_color: true
+        name: Front Porch Light
+
+      - type: horizontal-stack
+        cards:
+          - type: tile
+            entity: binary_sensor.front_door_front_door
+            state_color: true
+            name: Front Door
+          - type: tile
+            entity: binary_sensor.back_door_back_door
+            state_color: true
+            name: Back Door
+          - type: tile
+            entity: binary_sensor.garage_door_garage_door
+            state_color: true
+            name: Garage Door
+
+      - type: horizontal-stack
+        cards:
+          - type: tile
+            entity: sensor.front_door_lock_battery
+            name: Front Door Battery
+          - type: tile
+            entity: sensor.back_door_lock_battery
+            name: Back Door Battery

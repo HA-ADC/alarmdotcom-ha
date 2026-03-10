@@ -45,6 +45,7 @@ async def async_setup_entry(
         *hub.bridge.garage_doors.devices,
         *hub.bridge.gates.devices,
         *hub.bridge.water_valves.devices,
+        *hub.bridge.water_sensors.devices,
         *hub.bridge.thermostats.devices,
     ]
 
