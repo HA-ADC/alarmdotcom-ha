@@ -44,12 +44,18 @@ async def async_setup_entry(
 
 
 class AdcAlarmControlPanel(AdcEntity[Partition], AlarmControlPanelEntity):
-    """Alarm.com partition as a HA alarm control panel."""
+    """Alarm.com partition as a HA alarm control panel.
+
+    Optimistic transitional states: arming/disarming commands immediately
+    show ARMING or DISARMING in the UI. The WS EventWSMessage confirmation
+    triggers _handle_update which clears the transition and shows final state.
+    """
 
     _attr_code_arm_required = False
 
     def __init__(self, hub: AlarmHub, partition: Partition) -> None:
         super().__init__(hub, partition)
+        self._transitional_state: AlarmControlPanelState | None = None
         self._update_supported_features()
 
     def _update_supported_features(self) -> None:
@@ -63,21 +69,36 @@ class AdcAlarmControlPanel(AdcEntity[Partition], AlarmControlPanelEntity):
 
     @property
     def alarm_state(self) -> AlarmControlPanelState | None:
-        """Return the current alarm state."""
+        """Return transitional state while arming/disarming, otherwise actual state."""
+        if self._transitional_state is not None:
+            return self._transitional_state
         return _ARMING_STATE_MAP.get(self._device.state)
+
+    def _handle_update(self, message: object) -> None:
+        """WS confirmation arrived — clear transition then refresh."""
+        self._transitional_state = None
+        super()._handle_update(message)
 
     async def async_alarm_disarm(self, code: str | None = None) -> None:
         """Disarm the partition."""
+        self._transitional_state = AlarmControlPanelState.DISARMING
+        self.async_write_ha_state()
         await self._hub.bridge.disarm(self._device.resource_id)
 
     async def async_alarm_arm_home(self, code: str | None = None) -> None:
         """Arm in Stay mode."""
+        self._transitional_state = AlarmControlPanelState.ARMING
+        self.async_write_ha_state()
         await self._hub.bridge.arm_stay(self._device.resource_id)
 
     async def async_alarm_arm_away(self, code: str | None = None) -> None:
         """Arm in Away mode."""
+        self._transitional_state = AlarmControlPanelState.ARMING
+        self.async_write_ha_state()
         await self._hub.bridge.arm_away(self._device.resource_id)
 
     async def async_alarm_arm_night(self, code: str | None = None) -> None:
         """Arm in Night mode."""
+        self._transitional_state = AlarmControlPanelState.ARMING
+        self.async_write_ha_state()
         await self._hub.bridge.arm_night(self._device.resource_id)

@@ -144,6 +144,7 @@ class AdcClimate(AdcEntity[Thermostat], ClimateEntity):
 
         features = (
             ClimateEntityFeature.TARGET_TEMPERATURE
+            | ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
             | ClimateEntityFeature.FAN_MODE
             | ClimateEntityFeature.PRESET_MODE
         )
