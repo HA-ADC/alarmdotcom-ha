@@ -28,6 +28,7 @@ async def async_setup_entry(
     hub: AlarmHub = hass.data[DOMAIN][entry.entry_id][DATA_BRIDGE]
 
     all_devices: list[AdcDeviceResource] = [
+        *hub.bridge.cameras.devices,
         *hub.bridge.partitions.devices,
         *hub.bridge.sensors.devices,
         *hub.bridge.locks.devices,
