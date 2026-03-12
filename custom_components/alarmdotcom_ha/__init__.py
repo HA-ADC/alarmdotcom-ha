@@ -27,12 +27,18 @@ PLATFORMS: list[Platform] = [
     Platform.LIGHT,
     Platform.LOCK,
     Platform.SENSOR,
+    Platform.SWITCH,
     Platform.VALVE,
 ]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up alarmdotcom_ha from a config entry."""
+    # This integration is WebSocket push-based — polling does nothing useful.
+    # Ensure the UI option is always off so users aren't confused.
+    if not entry.pref_disable_polling:
+        hass.config_entries.async_update_entry(entry, pref_disable_polling=True)
+
     hub = AlarmHub(
         hass,
         entry,

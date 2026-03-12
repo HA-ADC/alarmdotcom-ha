@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+import voluptuous as vol
 from homeassistant.components.alarm_control_panel import (
     AlarmControlPanelEntity,
     AlarmControlPanelEntityFeature,
@@ -11,6 +12,7 @@ from homeassistant.components.alarm_control_panel import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from pyadc.const import ArmingState
@@ -29,17 +31,42 @@ _ARMING_STATE_MAP: dict[ArmingState, AlarmControlPanelState] = {
     ArmingState.ARMED_NIGHT: AlarmControlPanelState.ARMED_NIGHT,
 }
 
+# Schema shared by all extended-arming services
+_ARM_OPTIONS_SCHEMA = {
+    vol.Optional("silent_arming", default=False): bool,
+    vol.Optional("force_bypass", default=False): bool,
+    vol.Optional("no_entry_delay", default=False): bool,
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up alarm control panel entities."""
+    """Set up alarm control panel entities and register extended arming services."""
     hub: AlarmHub = hass.data[DOMAIN][entry.entry_id][DATA_BRIDGE]
     async_add_entities(
         AdcAlarmControlPanel(hub, partition)
         for partition in hub.bridge.partitions.devices
+    )
+
+    # Register custom entity services for extended arming options
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        "arm_away_options",
+        _ARM_OPTIONS_SCHEMA,
+        "async_alarm_arm_away_options",
+    )
+    platform.async_register_entity_service(
+        "arm_stay_options",
+        _ARM_OPTIONS_SCHEMA,
+        "async_alarm_arm_stay_options",
+    )
+    platform.async_register_entity_service(
+        "arm_night_options",
+        _ARM_OPTIONS_SCHEMA,
+        "async_alarm_arm_night_options",
     )
 
 
@@ -102,3 +129,53 @@ class AdcAlarmControlPanel(AdcEntity[Partition], AlarmControlPanelEntity):
         self._transitional_state = AlarmControlPanelState.ARMING
         self.async_write_ha_state()
         await self._hub.bridge.arm_night(self._device.resource_id)
+
+    # --- Extended arming services (registered in async_setup_entry) ---
+
+    async def async_alarm_arm_away_options(
+        self,
+        silent_arming: bool = False,
+        force_bypass: bool = False,
+        no_entry_delay: bool = False,
+    ) -> None:
+        """Arm Away with optional silent/force-bypass/no-entry-delay flags."""
+        self._transitional_state = AlarmControlPanelState.ARMING
+        self.async_write_ha_state()
+        await self._hub.bridge.partitions.arm_away(
+            self._device.resource_id,
+            silent=silent_arming,
+            force_bypass=force_bypass,
+            no_entry_delay=no_entry_delay,
+        )
+
+    async def async_alarm_arm_stay_options(
+        self,
+        silent_arming: bool = False,
+        force_bypass: bool = False,
+        no_entry_delay: bool = False,
+    ) -> None:
+        """Arm Stay with optional silent/force-bypass/no-entry-delay flags."""
+        self._transitional_state = AlarmControlPanelState.ARMING
+        self.async_write_ha_state()
+        await self._hub.bridge.partitions.arm_stay(
+            self._device.resource_id,
+            silent=silent_arming,
+            force_bypass=force_bypass,
+            no_entry_delay=no_entry_delay,
+        )
+
+    async def async_alarm_arm_night_options(
+        self,
+        silent_arming: bool = False,
+        force_bypass: bool = False,
+        no_entry_delay: bool = False,
+    ) -> None:
+        """Arm Night with optional silent/force-bypass/no-entry-delay flags."""
+        self._transitional_state = AlarmControlPanelState.ARMING
+        self.async_write_ha_state()
+        await self._hub.bridge.partitions.arm_night(
+            self._device.resource_id,
+            silent=silent_arming,
+            force_bypass=force_bypass,
+            no_entry_delay=no_entry_delay,
+        )

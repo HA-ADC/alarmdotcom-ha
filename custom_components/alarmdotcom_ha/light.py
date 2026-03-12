@@ -31,9 +31,13 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up light entities."""
+    """Set up light entities (excludes plain on/off switches — those go to switch platform)."""
     hub: AlarmHub = hass.data[DOMAIN][entry.entry_id][DATA_BRIDGE]
-    async_add_entities(AdcLight(hub, light) for light in hub.bridge.lights.devices)
+    async_add_entities(
+        AdcLight(hub, light)
+        for light in hub.bridge.lights.devices
+        if not light.is_switch
+    )
 
 
 class AdcLight(AdcEntity[Light], LightEntity):

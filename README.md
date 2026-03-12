@@ -12,18 +12,54 @@ Home Assistant custom integration for Alarm.com, built on [`pyadc`](../pyadc/). 
 
 ## Supported Devices
 
-| Device | HA Platform | Transport |
-|--------|-------------|-----------|
-| Security partitions | `alarm_control_panel` | WebSocket |
-| Door/window/motion/smoke/CO/water/gas sensors | `binary_sensor` | WebSocket |
-| Locks | `lock` | WebSocket |
-| Lights (on/off, dim, RGB, color temp) | `light` | WebSocket |
-| Thermostats (all modes, humidity, presets) | `climate` | WebSocket |
-| Garage doors | `cover` (GARAGE) | WebSocket |
-| Gates | `cover` (GATE) | WebSocket |
-| Water valves | `valve` | WebSocket |
-| Image sensors | `image` | Poll (1 min) |
-| Battery levels | `sensor` | WebSocket |
+| Device | HA Platform | Transport | Notes |
+|--------|-------------|-----------|-------|
+| Security partitions | `alarm_control_panel` | WebSocket | Arm/Away/Stay/Night/Disarm |
+| Contact sensors (door/window) | `binary_sensor` (DOOR) | WebSocket | |
+| Motion sensors | `binary_sensor` (MOTION) | WebSocket | |
+| Smoke/heat detectors | `binary_sensor` (SMOKE) | WebSocket | |
+| CO detectors | `binary_sensor` (CO) | WebSocket | |
+| Water/leak sensors | `binary_sensor` (MOISTURE) | WebSocket | Includes ADC-SHM-100-A Water Dragon |
+| Gas sensors | `binary_sensor` (GAS) | WebSocket | |
+| Glassbreak sensors | `binary_sensor` (SOUND) | WebSocket | |
+| Locks | `lock` | WebSocket | |
+| Lights (on/off, dimmable) | `light` | WebSocket | |
+| RGB lights | `light` | WebSocket | Full RGB color control |
+| Color-temp lights | `light` | WebSocket | Warm/cool white |
+| On/off switches | `switch` | WebSocket | ADC DeviceType 17 (LightSwitchControl) |
+| Thermostats | `climate` | WebSocket | All modes, humidity, fan presets |
+| Garage doors | `cover` (GARAGE) | WebSocket | |
+| Gates | `cover` (GATE) | WebSocket | Correct HA device class (community libraries use GARAGE incorrectly) |
+| Water valves | `valve` | WebSocket | |
+| Image sensors | `image` | Poll (1 min) | |
+| Battery levels | `sensor` (%) | WebSocket | Per-device diagnostic |
+| Malfunction state | `binary_sensor` (PROBLEM) | WebSocket | Per-device diagnostic |
+| Low battery state | `binary_sensor` (BATTERY) | WebSocket | Per-device diagnostic |
+
+## Devices Not Supported (with Reasons)
+
+| Device | Reason |
+|--------|--------|
+| GPS Trackers | Privacy-sensitive; geolocation is better handled by HA's native `device_tracker` platform via the mobile companion app. Would duplicate functionality with worse UX. |
+| Access Card Readers | Commercial-only ADC product. Consumer ADC accounts cannot access these. Access control management is also out of scope for a home automation integration. |
+| Power Meters | Requires deep HA Energy dashboard integration. ADC's power meter data is also available via dedicated energy integrations with better support. |
+| Car Monitor | Automotive telematics is out of scope for home automation. |
+| IQ Router | Network device management is out of scope for home automation. |
+| ADC Geo Devices | Redundant with HA's mobile companion app device tracker. |
+| ADC Scenes | Conflicts with HA's own automation and scene system. Using ADC scenes from HA would create confusing UX. |
+| X10 Lights | X10 protocol is obsolete (pre-2000). No modern installations to support or test against. |
+| Shades | Not available in the current ADC consumer API. No live devices to test against. |
+
+## Planned Future Devices
+
+| Device | HA Platform | Priority | Notes |
+|--------|-------------|----------|-------|
+| Temperature sensors (ADC-STC-1) | `sensor` (°F/°C) | High | ADC DeviceType 41; needs live device to confirm if numeric or alarm-state only |
+| Doorbell cameras | `binary_sensor` (ring) + `event` | High | Ring detection; ADC DeviceType 37 |
+| Sirens | `siren` | Medium | On/off trigger; ADC DeviceType 14/29 |
+| Smoke + CO combo sensors | `binary_sensor` | Medium | ADC DeviceType 53 (IQ Smoke Multi-Function) |
+| Contact + shock combo sensors | `binary_sensor` | Medium | ADC DeviceType 52 (Contact Multi-Function) |
+| Radon sensors | `sensor` | Low | Read-only radon level |
 
 ---
 

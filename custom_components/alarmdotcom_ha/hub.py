@@ -9,6 +9,8 @@ entry and the pyadc library.  It:
 * Subscribes to ``CONNECTION_EVENT`` to detect when the WebSocket enters the
   DEAD state (close code 1008 / JWT expiry) and schedules a config-entry
   reload so the integration re-authenticates from scratch.
+* Polls the Water Dragon (water meter) every hour since it does not receive
+  real-time WebSocket events.
 * Tears everything down cleanly in :meth:`shutdown`.
 
 ``connected`` property reflects whether the WebSocket is currently in
@@ -18,24 +20,26 @@ entry and the pyadc library.  It:
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
+from typing import TYPE_CHECKING
 
 import aiohttp
 
 from pyadc import AlarmBridge
-from pyadc.events import EventBrokerTopic
+from pyadc.events import EventBrokerTopic, ResourceEventMessage
 from pyadc.websocket.client import ConnectionEvent, WebSocketState
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from homeassistant.config_entries import ConfigEntry
 
 log = logging.getLogger(__name__)
 
+WATER_METER_POLL_INTERVAL = timedelta(hours=1)
+
 
 class AlarmHub:
-    """Wraps AlarmBridge and integrates it with the Home Assistant lifecycle.
-
-    Attributes:
-        bridge: The underlying :class:`~pyadc.AlarmBridge` instance.  Use
-            this to access device controllers (``bridge.partitions``, etc.)
-            or to subscribe to events via ``bridge.event_broker``.
-    """
+    """Wraps AlarmBridge and integrates it with the Home Assistant lifecycle."""
 
     def __init__(
         self,
@@ -45,16 +49,6 @@ class AlarmHub:
         password: str,
         mfa_cookie: str = "",
     ) -> None:
-        """Create an AlarmHub.
-
-        Args:
-            hass: Home Assistant instance.
-            entry: Config entry associated with this hub.
-            username: Alarm.com account e-mail.
-            password: Alarm.com account password.
-            mfa_cookie: Pre-stored two-factor auth cookie (skips OTP
-                challenge when valid).
-        """
         self._hass = hass
         self._entry = entry
         self._session = aiohttp.ClientSession()
@@ -64,25 +58,20 @@ class AlarmHub:
             password,
             mfa_cookie=mfa_cookie,
         )
-        self._unsub_connection: callable | None = None
+        self._unsub_connection = None
+        self._unsub_water_poll = None
         self._ws_connected: bool = False
 
     @property
     def bridge(self) -> AlarmBridge:
-        """Return the underlying AlarmBridge instance."""
         return self._bridge
 
     @property
     def connected(self) -> bool:
-        """Return True when the WebSocket is in CONNECTED state."""
         return self._ws_connected
 
     async def initialize(self) -> None:
-        """Authenticate, load all device state, then start the WebSocket.
-
-        Called once during config-entry setup.  On success the WebSocket
-        is running and device entities can be registered.
-        """
+        """Authenticate, load all device state, then start the WebSocket."""
         await self._bridge.initialize()
         self._unsub_connection = self._bridge.event_broker.subscribe(
             [EventBrokerTopic.CONNECTION_EVENT],
@@ -90,15 +79,31 @@ class AlarmHub:
         )
         await self._bridge.start_websocket()
 
-    def _handle_connection_event(self, message: ConnectionEvent) -> None:
-        """Handle WebSocket state changes from the EventBroker.
+        await self._async_poll_water_meters()
+        from homeassistant.helpers.event import async_track_time_interval
+        self._unsub_water_poll = async_track_time_interval(
+            self._hass,
+            self._async_poll_water_meters,
+            WATER_METER_POLL_INTERVAL,
+        )
 
-        Tracks ``_ws_connected`` for the :attr:`connected` property.  When
-        the WebSocket transitions to DEAD (typically after receiving close
-        code 1008 indicating JWT expiry or repeated connection failures),
-        schedules a config-entry reload which tears down and restarts the
-        integration — effectively re-authenticating the session.
-        """
+    async def _async_poll_water_meters(self, _now=None) -> None:
+        """Refresh water meter data and notify HA entities."""
+        try:
+            meters = await self._bridge.water_meters.fetch_all()
+        except Exception:
+            log.exception("alarmdotcom_ha: water meter poll failed")
+            return
+
+        for meter in meters:
+            self._bridge.event_broker.publish(
+                ResourceEventMessage(
+                    device_id=meter.resource_id,
+                    device_type="water-meter",
+                )
+            )
+
+    def _handle_connection_event(self, message: ConnectionEvent) -> None:
         if message.current_state is WebSocketState.CONNECTED:
             self._ws_connected = True
         elif message.current_state in (
@@ -117,7 +122,10 @@ class AlarmHub:
             )
 
     async def shutdown(self) -> None:
-        """Stop WebSocket, keep-alive, and close the HTTP session."""
+        """Stop WebSocket, water poll, and close the HTTP session."""
+        if self._unsub_water_poll is not None:
+            self._unsub_water_poll()
+            self._unsub_water_poll = None
         if self._unsub_connection is not None:
             self._unsub_connection()
             self._unsub_connection = None

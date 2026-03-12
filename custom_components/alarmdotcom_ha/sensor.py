@@ -1,9 +1,8 @@
-"""Sensor platform for alarmdotcom_ha — battery, diagnostic, and thermostat sensors."""
+"""Sensor platform for alarmdotcom_ha — battery, diagnostic, thermostat, and water meter sensors."""
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -21,6 +20,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyadc.events import EventBrokerTopic
 from pyadc.models.base import AdcDeviceResource
 from pyadc.models.thermostat import Thermostat
+from pyadc.models.water_meter import WaterMeter
 
 from .const import DATA_BRIDGE, DOMAIN
 from .hub import AlarmHub
@@ -57,6 +57,10 @@ async def async_setup_entry(
         entities.append(AdcThermostatTemperatureSensor(hub, thermostat))
         if thermostat.supports_humidity_control:
             entities.append(AdcThermostatHumiditySensor(hub, thermostat))
+
+    for meter in hub.bridge.water_meters.devices:
+        entities.append(AdcWaterUsageTodaySensor(hub, meter))
+        entities.append(AdcWaterDailyAvgSensor(hub, meter))
 
     async_add_entities(entities)
 
@@ -177,3 +181,104 @@ class AdcThermostatHumiditySensor(_AdcSensorBase):
     def native_value(self) -> float | None:
         """Return current humidity."""
         return self._device.current_humidity
+
+
+# ---------------------------------------------------------------------------
+# Water Dragon (ADC-SHM-100-A) water meter sensors
+# ---------------------------------------------------------------------------
+
+class _AdcWaterMeterSensorBase(SensorEntity):
+    """Base class for Water Dragon sensor entities.
+
+    Water meters are polled (no WS events), so these entities register a
+    periodic refresh via the hub's water meter polling loop.
+    """
+
+    should_poll = False
+    _attr_has_entity_name = True
+
+    def __init__(self, hub: AlarmHub, meter: WaterMeter) -> None:
+        self._hub = hub
+        self._meter = meter
+        self._unsubscribe_refresh: Any = None
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, meter.resource_id)},
+            name=meter.name,
+            manufacturer="Alarm.com",
+            model="ADC-SHM-100-A",
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to water meter refresh events from the hub."""
+        self._unsubscribe_refresh = self._hub.bridge.event_broker.subscribe(
+            [EventBrokerTopic.RESOURCE_UPDATED],
+            self._handle_refresh,
+            device_id=self._meter.resource_id,
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unsubscribe on removal."""
+        if self._unsubscribe_refresh is not None:
+            self._unsubscribe_refresh()
+            self._unsubscribe_refresh = None
+
+    def _handle_refresh(self, _message: object) -> None:
+        refreshed = self._hub.bridge.water_meters.get(self._meter.resource_id)
+        if refreshed is not None:
+            self._meter = refreshed
+        self.async_write_ha_state()
+
+    @property
+    def available(self) -> bool:
+        """Water meter entities are polled — available as long as data was fetched."""
+        return self._hub.bridge.water_meters.get(self._meter.resource_id) is not None
+
+
+class AdcWaterUsageTodaySensor(_AdcWaterMeterSensorBase):
+    """Water usage today for a Water Dragon device."""
+
+    _attr_device_class = SensorDeviceClass.WATER
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_name = "Water Usage Today"
+    _attr_icon = "mdi:water"
+
+    def __init__(self, hub: AlarmHub, meter: WaterMeter) -> None:
+        super().__init__(hub, meter)
+        self._attr_unique_id = f"{meter.resource_id}_usage_today"
+        from homeassistant.const import UnitOfVolume
+        self._attr_native_unit_of_measurement = (
+            UnitOfVolume.GALLONS if meter.volume_unit == 0 else UnitOfVolume.LITERS
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        return self._meter.usage_today
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose ADC gauge display range so dashboard gauge cards work out of the box."""
+        return {
+            "daily_display_min": self._meter.daily_usage_display_minimum,
+            "daily_display_max": self._meter.daily_usage_display_maximum,
+        }
+
+
+class AdcWaterDailyAvgSensor(_AdcWaterMeterSensorBase):
+    """30-day average daily water usage for a Water Dragon device."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_name = "Water Daily Average"
+    _attr_icon = "mdi:water-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hub: AlarmHub, meter: WaterMeter) -> None:
+        super().__init__(hub, meter)
+        self._attr_unique_id = f"{meter.resource_id}_daily_avg"
+        from homeassistant.const import UnitOfVolume
+        self._attr_native_unit_of_measurement = (
+            UnitOfVolume.GALLONS if meter.volume_unit == 0 else UnitOfVolume.LITERS
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        return self._meter.average_daily_usage

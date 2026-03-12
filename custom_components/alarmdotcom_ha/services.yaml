@@ -1,0 +1,80 @@
+arm_away_options:
+  name: Arm Away (with options)
+  description: Arm the partition in Away mode with advanced options.
+  target:
+    entity:
+      integration: alarmdotcom_ha
+      domain: alarm_control_panel
+  fields:
+    silent_arming:
+      name: Silent Arming
+      description: Suppress exit-delay beeps.
+      default: false
+      selector:
+        boolean:
+    force_bypass:
+      name: Force Bypass
+      description: Automatically bypass any open sensors.
+      default: false
+      selector:
+        boolean:
+    no_entry_delay:
+      name: No Entry Delay
+      description: Arm without an entry delay (instant alarm on entry).
+      default: false
+      selector:
+        boolean:
+
+arm_stay_options:
+  name: Arm Stay (with options)
+  description: Arm the partition in Stay mode with advanced options.
+  target:
+    entity:
+      integration: alarmdotcom_ha
+      domain: alarm_control_panel
+  fields:
+    silent_arming:
+      name: Silent Arming
+      description: Suppress exit-delay beeps.
+      default: false
+      selector:
+        boolean:
+    force_bypass:
+      name: Force Bypass
+      description: Automatically bypass any open sensors.
+      default: false
+      selector:
+        boolean:
+    no_entry_delay:
+      name: No Entry Delay
+      description: Arm without an entry delay (instant alarm on entry).
+      default: false
+      selector:
+        boolean:
+
+arm_night_options:
+  name: Arm Night (with options)
+  description: Arm the partition in Night mode with advanced options.
+  target:
+    entity:
+      integration: alarmdotcom_ha
+      domain: alarm_control_panel
+  fields:
+    silent_arming:
+      name: Silent Arming
+      description: Suppress exit-delay beeps.
+      default: false
+      selector:
+        boolean:
+    force_bypass:
+      name: Force Bypass
+      description: Automatically bypass any open sensors.
+      default: false
+      selector:
+        boolean:
+    no_entry_delay:
+      name: No Entry Delay
+      description: Arm without an entry delay (instant alarm on entry).
+      default: false
+      selector:
+        boolean:
