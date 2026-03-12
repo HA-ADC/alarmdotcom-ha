@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 
 from pyadc import AlarmBridge
+from pyadc.const import OtpType
 from pyadc.exceptions import (
     AuthenticationFailed,
     MustConfigureMfa,
@@ -126,8 +127,11 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._password: str = ""
         self._mfa_cookie: str = ""
         self._base_url: str = _PROD_URL
-        self._two_factor_auth_id: str = ""
         self._otp_types: int = 0
+        self._otp_method: int = 0  # OtpType int value chosen by user
+        # Held open across 2FA steps so we can send/verify without re-logging in
+        self._otp_session: aiohttp.ClientSession | None = None
+        self._otp_bridge: AlarmBridge | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -144,30 +148,49 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if url_error := _validate_base_url(raw_url):
                 errors[CONF_BASE_URL] = url_error
             else:
+                session = aiohttp.ClientSession()
+                bridge = AlarmBridge(
+                    session,
+                    self._username,
+                    self._password,
+                    mfa_cookie=self._mfa_cookie,
+                    base_url=self._base_url,
+                )
                 try:
-                    data = await _validate_credentials(
-                        self.hass,
-                        self._username,
-                        self._password,
-                        self._mfa_cookie,
-                        base_url=self._base_url,
+                    await bridge.auth.login()
+                    new_mfa_cookie = bridge.auth.mfa_cookie
+                    await bridge.stop()
+                    await session.close()
+                    await self.async_set_unique_id(self._username.lower())
+                    self._abort_if_unique_id_configured()
+                    return self.async_create_entry(
+                        title=self._username,
+                        data={
+                            CONF_USERNAME: self._username,
+                            CONF_PASSWORD: self._password,
+                            CONF_MFA_COOKIE: new_mfa_cookie,
+                            CONF_BASE_URL: self._base_url,
+                        },
                     )
                 except OtpRequired as exc:
                     self._otp_types = exc.otp_types
-                    return await self.async_step_two_factor()
+                    # Keep bridge alive across 2FA steps — don't close session
+                    self._otp_session = session
+                    self._otp_bridge = bridge
+                    return await self.async_step_two_factor_method()
                 except MustConfigureMfa:
+                    await session.close()
                     return self.async_abort(reason="must_configure_mfa")
                 except AuthenticationFailed:
+                    await session.close()
                     errors["base"] = "invalid_auth"
                 except ServiceUnavailable:
+                    await session.close()
                     errors["base"] = "cannot_connect"
                 except Exception:
+                    await session.close()
                     log.exception("Unexpected error during alarmdotcom_ha setup")
                     errors["base"] = "unknown"
-                else:
-                    await self.async_set_unique_id(self._username.lower())
-                    self._abort_if_unique_id_configured()
-                    return self.async_create_entry(title=self._username, data=data)
 
         schema = STEP_USER_SCHEMA
         return self.async_show_form(
@@ -176,33 +199,64 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_two_factor_method(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Let the user choose how to receive their OTP code."""
+        errors: dict[str, str] = {}
+
+        # Build choices from the enabled OTP types
+        choices: dict[str, str] = {}
+        if self._otp_types & OtpType.SMS:
+            choices["sms"] = "Text message (SMS)"
+        if self._otp_types & OtpType.EMAIL:
+            choices["email"] = "Email"
+        if self._otp_types & OtpType.APP:
+            choices["app"] = "Authenticator app"
+
+        if user_input is not None:
+            method = user_input.get("method", "")
+            # Map string → OtpType int value (app=1, sms=2, email=4)
+            method_map = {"app": 1, "sms": 2, "email": 4}
+            self._otp_method = method_map.get(method, 0)
+            bridge = self._otp_bridge
+            try:
+                if method == "sms":
+                    await bridge.auth.send_otp_sms()
+                elif method == "email":
+                    await bridge.auth.send_otp_email()
+                # app method doesn't need a send — code is already in the app
+            except Exception:
+                log.exception("Failed to send OTP via %s", method)
+                errors["base"] = "otp_send_failed"
+
+            if not errors:
+                return await self.async_step_two_factor()
+
+        return self.async_show_form(
+            step_id="two_factor_method",
+            data_schema=vol.Schema(
+                {vol.Required("method"): vol.In(choices)}
+            ),
+            errors=errors,
+        )
+
     async def async_step_two_factor(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle OTP entry."""
+        """Handle OTP code entry."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
             code = user_input[CONF_TWO_FACTOR_CODE].strip()
-            session = aiohttp.ClientSession()
+            bridge = self._otp_bridge
             try:
-                bridge = AlarmBridge(
-                    session,
-                    self._username,
-                    self._password,
-                    mfa_cookie=self._mfa_cookie,
-                    base_url=self._base_url,
-                )
-                await bridge.auth.submit_otp(code)
-                self._mfa_cookie = bridge.auth.mfa_cookie
-                await bridge.stop()
+                self._mfa_cookie = await bridge.auth.verify_otp(code, otp_type=self._otp_method)
             except AuthenticationFailed:
-                errors["base"] = "invalid_auth"
+                errors["base"] = "invalid_code"
             except Exception:
-                log.exception("Unexpected error during OTP submission")
+                log.exception("Unexpected error during OTP verification")
                 errors["base"] = "unknown"
-            finally:
-                await session.close()
 
             if not errors:
                 return await self.async_step_trust_device()
@@ -218,26 +272,32 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Optionally trust this device to skip OTP next time."""
         if user_input is not None:
-            if user_input.get("trust_device"):
-                session = aiohttp.ClientSession()
+            bridge = self._otp_bridge
+            if user_input.get("trust_device") and bridge:
                 try:
-                    bridge = AlarmBridge(
-                        session,
-                        self._username,
-                        self._password,
-                        mfa_cookie=self._mfa_cookie,
-                        base_url=self._base_url,
-                    )
                     await bridge.auth.trust_device()
                     self._mfa_cookie = bridge.auth.mfa_cookie
-                    await bridge.stop()
+                    log.debug("trust_device step: mfa_cookie len=%d", len(self._mfa_cookie))
                 except Exception:
                     log.warning("Could not trust device; proceeding anyway.")
-                finally:
-                    await session.close()
+
+            # Done with the OTP bridge — clean up
+            if bridge:
+                try:
+                    await bridge.stop()
+                except Exception:
+                    pass
+            if self._otp_session:
+                try:
+                    await self._otp_session.close()
+                except Exception:
+                    pass
+            self._otp_bridge = None
+            self._otp_session = None
 
             await self.async_set_unique_id(self._username.lower())
             self._abort_if_unique_id_configured()
+            log.info("Creating config entry: mfa_cookie present=%s", bool(self._mfa_cookie))
             return self.async_create_entry(
                 title=self._username,
                 data={
@@ -268,29 +328,44 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             self._password = user_input[CONF_PASSWORD]
+            session = aiohttp.ClientSession()
+            bridge = AlarmBridge(
+                session,
+                self._username,
+                self._password,
+                mfa_cookie=self._mfa_cookie,
+                base_url=self._base_url,
+            )
             try:
-                data = await _validate_credentials(
-                    self.hass,
-                    self._username,
-                    self._password,
-                    self._mfa_cookie,
-                    base_url=self._base_url,
-                )
-            except OtpRequired as exc:
-                self._otp_types = exc.otp_types
-                return await self.async_step_two_factor()
-            except AuthenticationFailed:
-                errors["base"] = "invalid_auth"
-            except ServiceUnavailable:
-                errors["base"] = "cannot_connect"
-            except Exception:
-                log.exception("Unexpected error during alarmdotcom_ha re-auth")
-                errors["base"] = "unknown"
-            else:
+                await bridge.auth.login()
+                new_mfa_cookie = bridge.auth.mfa_cookie
+                await bridge.stop()
+                await session.close()
+                new_data = {
+                    CONF_USERNAME: self._username,
+                    CONF_PASSWORD: self._password,
+                    CONF_MFA_COOKIE: new_mfa_cookie,
+                    CONF_BASE_URL: self._base_url,
+                }
                 if entry:
-                    self.hass.config_entries.async_update_entry(entry, data=data)
+                    self.hass.config_entries.async_update_entry(entry, data=new_data)
                     await self.hass.config_entries.async_reload(entry.entry_id)
                 return self.async_abort(reason="reauth_successful")
+            except OtpRequired as exc:
+                self._otp_types = exc.otp_types
+                self._otp_session = session
+                self._otp_bridge = bridge
+                return await self.async_step_two_factor_method()
+            except AuthenticationFailed:
+                await session.close()
+                errors["base"] = "invalid_auth"
+            except ServiceUnavailable:
+                await session.close()
+                errors["base"] = "cannot_connect"
+            except Exception:
+                await session.close()
+                log.exception("Unexpected error during alarmdotcom_ha re-auth")
+                errors["base"] = "unknown"
 
         return self.async_show_form(
             step_id="reauth",

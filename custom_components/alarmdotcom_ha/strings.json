@@ -6,13 +6,24 @@
         "title": "Connect to Alarm.com",
         "description": "Enter your Alarm.com account credentials.",
         "data": {
-          "username": "Username (email)",
-          "password": "Password"
+          "username": "Username",
+          "password": "Password",
+          "base_url": "Base URL"
+        },
+        "data_description": {
+          "base_url": "Do not edit this URL, even if your dealer uses their own app (e.g. ADT, Brinks). Only change this if you are a developer with access to a non-production Alarm.com server."
+        }
+      },
+      "two_factor_method": {
+        "title": "Send Verification Code",
+        "description": "Choose how you'd like to receive your verification code.",
+        "data": {
+          "method": "Delivery method"
         }
       },
       "two_factor": {
         "title": "Two-Factor Authentication",
-        "description": "Enter the verification code sent to your registered device.",
+        "description": "Enter the verification code.",
         "data": {
           "two_factor_code": "Verification Code"
         }
@@ -34,7 +45,10 @@
     },
     "error": {
       "invalid_auth": "Invalid username or password.",
+      "invalid_code": "Verification code is incorrect or has expired. Request a new code and try again.",
       "cannot_connect": "Unable to connect to Alarm.com. Please try again.",
+      "invalid_url": "Invalid URL. Enter a hostname (e.g. alarm.com) or full URL (e.g. https://alarm.com).",
+      "otp_send_failed": "Failed to send verification code. Please try again.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
