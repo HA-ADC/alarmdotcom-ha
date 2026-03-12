@@ -12,14 +12,15 @@ Home Assistant custom integration for Alarm.com, built on [`pyadc`](../pyadc/). 
 
 ## Supported Devices
 
-Below is a table of the currently supported device types. Under the communiy tested column I have included devices that have been personally tested by the community. If you have a device not on the list and it is working, open an issue or pull request to get it added. Please supply proof (a short video) that the device is working. With your support we can get this list from 🟧 to ✅.
+Below is a table of the currently supported device types. Under the communiy tested column I have included devices that have been personally tested by the community. **Just because your device of a given type is not explicitly listed, does not mean it isn't supported (Ex IQ4 is listed but you have an IQ2)** If you have a device not on the list and it is working, open an issue or pull request to get it added. Please supply proof (a short video) that the device is working. With your support we can get this list from 🟧 to ✅.
 
 ✅ Tested - either on physical device or is able to see states. For devices with actions, the actions have also been tested. <br/>
 🟧  Supported in Theory - Code is in place but do not have a device to test with
 
 | Device | Community Tested | HA Platform | Transport | Notes | 
 |--------|----|-----------|-------|-------|
-| Security partitions | ✅ <br/> IQ4 | `alarm_control_panel` | WebSocket | Arm/Away/Stay/Night/Disarm |
+<!-- Keep these in Alphabetical order -->
+| Security Panel | ✅ <br/> IQ4 | `alarm_control_panel` | WebSocket | Arm/Away/Stay/Night/Disarm |
 | Contact sensors (door/window) | ✅ <br/> QS1135-840 | `binary_sensor` (DOOR) | WebSocket | |
 | Motion sensors | ✅ <br/> No tested physical devices, but states are reporting | `binary_sensor` (MOTION) | WebSocket | |
 | Smoke/heat detectors | 🟧 <br/> | `binary_sensor` (SMOKE) | WebSocket | |
@@ -28,28 +29,28 @@ Below is a table of the currently supported device types. Under the communiy tes
 | Gas sensors | 🟧 <br/> | `binary_sensor` (GAS) | WebSocket | |
 | Glassbreak sensors | ✅ <br/> States are reporting on IQ4. Have not been able to trigger a glass break sound to test that state. | `binary_sensor` (SOUND) | WebSocket | |
 | Locks | ✅ <br/> Yale Assure series locks | `lock` | WebSocket | |
-| Lights (on/off, dimmable) | 🟧 | `light` | WebSocket | These would be physical light bulbs. |
-| RGB lights | 🟧 <br/> | `light` | WebSocket | Full RGB color control |
-| Color-temp lights | 🟧 <br/> | `light` | WebSocket | Warm/cool white |
+| Lights (on/off, dimmable) | ✅ Zipato RGBW Bulb | `light` | WebSocket | These would be physical light bulbs. |
+| RGB lights | ✅ <br/> Zipato RGBW Bulb | `light` | WebSocket | Full RGB color control |
+| Color-temp lights | ✅  <br/> Zipato RGBW Bulb | `light` | WebSocket | Warm/cool white |
 | On/off switches | ✅ <br/> Jasco 46562  |`switch` | WebSocket | I believe outlet switches would be under this category too |
+| Dimmable switches | 🟧  <br/>  |`switch` | WebSocket | I believe outlet switches would be under this category too |
 | Thermostats | 🟧 <br/> | `climate` | WebSocket | All modes, humidity, fan presets |
 | Garage doors | 🟧 <br/> | `cover` (GARAGE) | WebSocket | |
 | Gates | 🟧 <br/> | `cover` (GATE) | WebSocket | |
-| Water valves | 🟧 <br/> | `valve` | WebSocket | |
+| Water valves | ✅ <br/> Econet Water Valve | `valve` | WebSocket | |
 | Water meters | ✅ <br/> ADC-SHM-100 | `sensor` (gal/L) | Poll (1 hr) | Usage today + Daily Average|
 | Image sensors | 🟧 <br/> | `image` | Poll (30 min) | |
-| Battery levels | 🟧 <br/> |`sensor` (%) | WebSocket | Per-device diagnostic |
+| Battery levels | ✅ <br/> Yale Assure Lock |`sensor` (%) | WebSocket | Per-device diagnostic |
 | Malfunction state | ✅ | `binary_sensor` (PROBLEM) | WebSocket | Per-device diagnostic |
 | Low battery state | ✅ | `binary_sensor` (BATTERY) | WebSocket | Per-device diagnostic |
 
-## Devices Not Supported (with Reasons)
+## Devices Not Supported (Blacklisted)
 
 | Device | Reason |
 |--------|--------|
 | GPS Trackers | Privacy-sensitive; geolocation is better handled by HA's native `device_tracker` platform via the mobile companion app. Would duplicate functionality with worse UX. |
 | Access Card Readers | Commercial-only ADC product. Consumer ADC accounts cannot access these. Access control management is also out of scope for a home automation integration. |
 | Power Meters | Requires deep HA Energy dashboard integration. ADC's power meter data is also available via dedicated energy integrations with better support. |
-| Car Monitor | Automotive telematics is out of scope for home automation. |
 | IQ Router | Network device management is out of scope for home automation. |
 | ADC Geo Devices | Redundant with HA's mobile companion app device tracker. |
 | ADC Scenes | Conflicts with HA's own automation and scene system. Using ADC scenes from HA would create confusing UX. |

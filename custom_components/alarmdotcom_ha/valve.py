@@ -40,22 +40,25 @@ class AdcWaterValve(AdcEntity[WaterValve], ValveEntity):
     _attr_reports_position = False
 
     @property
-    def is_open(self) -> bool | None:
-        """Return True if the valve is open."""
-        if self._device.state == ValveState.OPEN:
-            return True
+    def is_closed(self) -> bool | None:
+        """Return True if closed, False if open, None when transitioning or unknown."""
+        if self._device.is_opening or self._device.is_closing:
+            return None
         if self._device.state == ValveState.CLOSED:
+            return True
+        if self._device.state == ValveState.OPEN:
             return False
         return None
 
     @property
-    def is_closed(self) -> bool | None:
-        """Return True if the valve is closed."""
-        if self._device.state == ValveState.CLOSED:
-            return True
-        if self._device.state == ValveState.OPEN:
-            return False
-        return None
+    def is_opening(self) -> bool:
+        """Return True while the valve is transitioning to open."""
+        return self._device.is_opening
+
+    @property
+    def is_closing(self) -> bool:
+        """Return True while the valve is transitioning to closed."""
+        return self._device.is_closing
 
     async def async_open_valve(self, **kwargs: Any) -> None:
         """Open the water valve."""
