@@ -40,9 +40,9 @@ def _normalize_base_url(url: str) -> str:
     """Normalize a base URL to a consistent ``https://host`` form.
 
     Accepts any of these formats and returns the canonical form:
-      - ``alarm.dev.adcinternal.com``
-      - ``alarm.dev.adcinternal.com/``
-      - ``https://alarm.dev.adcinternal.com/``
+      - ``alarm.com``
+      - ``alarm.com/``
+      - ``https://www.alarm.com/``
     """
     url = url.strip().rstrip("/")
     if not url.startswith(("http://", "https://")):
