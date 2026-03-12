@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from pyadc.const import DeviceType, LightState
+from pyadc.const import LightState
 from pyadc.models.light import Light
 
 from .const import DATA_BRIDGE, DOMAIN
@@ -30,7 +30,7 @@ async def async_setup_entry(
     async_add_entities(
         AdcSwitch(hub, light)
         for light in hub.bridge.lights.devices
-        if light.device_type == DeviceType.LIGHT_SWITCH_CONTROL
+        if light.is_switch
     )
 
 
