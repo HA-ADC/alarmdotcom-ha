@@ -18,7 +18,7 @@ from .hub import AlarmHub
 log = logging.getLogger(__name__)
 
 # Image sensors poll to refresh image URL; state changes still arrive via WebSocket.
-SCAN_INTERVAL = timedelta(minutes=1)
+SCAN_INTERVAL = timedelta(minutes=30)
 
 
 async def async_setup_entry(

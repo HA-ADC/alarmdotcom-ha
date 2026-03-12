@@ -1,6 +1,6 @@
 # alarmdotcom_ha — Home Assistant Integration
 
-Home Assistant custom integration for Alarm.com, built on [`pyadc`](../pyadc/). All device state is **WebSocket-pushed** — no polling except image sensors.
+Home Assistant custom integration for Alarm.com, built on [`pyadc`](../pyadc/). All device state is **WebSocket-pushed** — no polling except image sensors (every 30 min) and water meters (every 1 hour).
 
 ## Features
 
@@ -12,29 +12,35 @@ Home Assistant custom integration for Alarm.com, built on [`pyadc`](../pyadc/). 
 
 ## Supported Devices
 
-| Device | HA Platform | Transport | Notes |
-|--------|-------------|-----------|-------|
-| Security partitions | `alarm_control_panel` | WebSocket | Arm/Away/Stay/Night/Disarm |
-| Contact sensors (door/window) | `binary_sensor` (DOOR) | WebSocket | |
-| Motion sensors | `binary_sensor` (MOTION) | WebSocket | |
-| Smoke/heat detectors | `binary_sensor` (SMOKE) | WebSocket | |
-| CO detectors | `binary_sensor` (CO) | WebSocket | |
-| Water/leak sensors | `binary_sensor` (MOISTURE) | WebSocket | Includes ADC-SHM-100-A Water Dragon |
-| Gas sensors | `binary_sensor` (GAS) | WebSocket | |
-| Glassbreak sensors | `binary_sensor` (SOUND) | WebSocket | |
-| Locks | `lock` | WebSocket | |
-| Lights (on/off, dimmable) | `light` | WebSocket | |
-| RGB lights | `light` | WebSocket | Full RGB color control |
-| Color-temp lights | `light` | WebSocket | Warm/cool white |
-| On/off switches | `switch` | WebSocket | ADC DeviceType 17 (LightSwitchControl) |
-| Thermostats | `climate` | WebSocket | All modes, humidity, fan presets |
-| Garage doors | `cover` (GARAGE) | WebSocket | |
-| Gates | `cover` (GATE) | WebSocket | Correct HA device class (community libraries use GARAGE incorrectly) |
-| Water valves | `valve` | WebSocket | |
-| Image sensors | `image` | Poll (1 min) | |
-| Battery levels | `sensor` (%) | WebSocket | Per-device diagnostic |
-| Malfunction state | `binary_sensor` (PROBLEM) | WebSocket | Per-device diagnostic |
-| Low battery state | `binary_sensor` (BATTERY) | WebSocket | Per-device diagnostic |
+Below is a table of the currently supported device types. Under the communiy tested column I have included devices that have been personally tested by the community. If you have a device not on the list and it is working, open an issue or pull request to get it added. Please supply proof (a short video) that the device is working. With your support we can get this list from 🟧 to ✅.
+
+✅ Tested - either on physical device or is able to see states. For devices with actions, the actions have also been tested. <br/>
+🟧  Supported in Theory - Code is in place but do not have a device to test with
+
+| Device | Community Tested | HA Platform | Transport | Notes | 
+|--------|----|-----------|-------|-------|
+| Security partitions | ✅ <br/> IQ4 | `alarm_control_panel` | WebSocket | Arm/Away/Stay/Night/Disarm |
+| Contact sensors (door/window) | ✅ <br/> QS1135-840 | `binary_sensor` (DOOR) | WebSocket | |
+| Motion sensors | ✅ <br/> No tested physical devices, but states are reporting | `binary_sensor` (MOTION) | WebSocket | |
+| Smoke/heat detectors | 🟧 <br/> | `binary_sensor` (SMOKE) | WebSocket | |
+| CO detectors | 🟧 <br/>  | `binary_sensor` (CO) | WebSocket | |
+| Water/leak sensors | 🟧 <br/>  | `binary_sensor` (MOISTURE) | WebSocket | |
+| Gas sensors | 🟧 <br/> | `binary_sensor` (GAS) | WebSocket | |
+| Glassbreak sensors | ✅ <br/> States are reporting on IQ4. Have not been able to trigger a glass break sound to test that state. | `binary_sensor` (SOUND) | WebSocket | |
+| Locks | ✅ <br/> Yale Assure series locks | `lock` | WebSocket | |
+| Lights (on/off, dimmable) | 🟧 | `light` | WebSocket | These would be physical light bulbs. |
+| RGB lights | 🟧 <br/> | `light` | WebSocket | Full RGB color control |
+| Color-temp lights | 🟧 <br/> | `light` | WebSocket | Warm/cool white |
+| On/off switches | ✅ <br/> Jasco 46562  |`switch` | WebSocket | I believe outlet switches would be under this category too |
+| Thermostats | 🟧 <br/> | `climate` | WebSocket | All modes, humidity, fan presets |
+| Garage doors | 🟧 <br/> | `cover` (GARAGE) | WebSocket | |
+| Gates | 🟧 <br/> | `cover` (GATE) | WebSocket | |
+| Water valves | 🟧 <br/> | `valve` | WebSocket | |
+| Water meters | ✅ <br/> ADC-SHM-100 | `sensor` (gal/L) | Poll (1 hr) | Usage today + Daily Average|
+| Image sensors | 🟧 <br/> | `image` | Poll (30 min) | |
+| Battery levels | 🟧 <br/> |`sensor` (%) | WebSocket | Per-device diagnostic |
+| Malfunction state | ✅ | `binary_sensor` (PROBLEM) | WebSocket | Per-device diagnostic |
+| Low battery state | ✅ | `binary_sensor` (BATTERY) | WebSocket | Per-device diagnostic |
 
 ## Devices Not Supported (with Reasons)
 
@@ -52,14 +58,10 @@ Home Assistant custom integration for Alarm.com, built on [`pyadc`](../pyadc/). 
 
 ## Planned Future Devices
 
+Submit issue requests with the device type and model and we will try to get it added as soon as we can! If possible please include logs as to what endpoint the device is hitting.
+
 | Device | HA Platform | Priority | Notes |
 |--------|-------------|----------|-------|
-| Temperature sensors (ADC-STC-1) | `sensor` (°F/°C) | High | ADC DeviceType 41; needs live device to confirm if numeric or alarm-state only |
-| Doorbell cameras | `binary_sensor` (ring) + `event` | High | Ring detection; ADC DeviceType 37 |
-| Sirens | `siren` | Medium | On/off trigger; ADC DeviceType 14/29 |
-| Smoke + CO combo sensors | `binary_sensor` | Medium | ADC DeviceType 53 (IQ Smoke Multi-Function) |
-| Contact + shock combo sensors | `binary_sensor` | Medium | ADC DeviceType 52 (Contact Multi-Function) |
-| Radon sensors | `sensor` | Low | Read-only radon level |
 
 ---
 
