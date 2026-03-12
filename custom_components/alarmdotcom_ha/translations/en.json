@@ -7,7 +7,11 @@
         "description": "Enter your Alarm.com account credentials.",
         "data": {
           "username": "Username (email)",
-          "password": "Password"
+          "password": "Password",
+          "base_url": "Base URL"
+        },
+        "data_description": {
+          "base_url": "Do not edit this URL, even if your dealer uses their own app (e.g. ADT, Brinks). Only change this if you are a developer with access to a non-production Alarm.com server."
         }
       },
       "two_factor": {
@@ -35,6 +39,7 @@
     "error": {
       "invalid_auth": "Invalid username or password.",
       "cannot_connect": "Unable to connect to Alarm.com. Please try again.",
+      "invalid_url": "Invalid URL. Enter a hostname (e.g. alarm.com) or full URL (e.g. https://alarm.com).",
       "unknown": "An unexpected error occurred."
     },
     "abort": {

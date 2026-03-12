@@ -48,6 +48,7 @@ class AlarmHub:
         username: str,
         password: str,
         mfa_cookie: str = "",
+        base_url: str = "https://www.alarm.com",
     ) -> None:
         self._hass = hass
         self._entry = entry
@@ -57,6 +58,7 @@ class AlarmHub:
             username,
             password,
             mfa_cookie=mfa_cookie,
+            base_url=base_url,
         )
         self._unsub_connection = None
         self._unsub_water_poll = None
