@@ -92,10 +92,14 @@ class AdcGarageDoor(_AdcCoverBase):
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the garage door."""
+        self._device.state = CoverState.OPENING
+        self.async_write_ha_state()
         await self._hub.bridge.garage_doors.open(self._device.resource_id)
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close the garage door."""
+        self._device.state = CoverState.CLOSING
+        self.async_write_ha_state()
         await self._hub.bridge.garage_doors.close(self._device.resource_id)
 
 
@@ -114,8 +118,12 @@ class AdcGate(_AdcCoverBase):
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the gate."""
+        self._device.state = CoverState.OPENING
+        self.async_write_ha_state()
         await self._hub.bridge.gates.open(self._device.resource_id)
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close the gate."""
+        self._device.state = CoverState.CLOSING
+        self.async_write_ha_state()
         await self._hub.bridge.gates.close(self._device.resource_id)

@@ -17,45 +17,44 @@ Below is a table of the currently supported device types. Under the communiy tes
 ✅ Tested - either on physical device or is able to see states. For devices with actions, the actions have also been tested. <br/>
 🟧  Supported in Theory - Code is in place but do not have a device to test with
 
-| Device | Community Tested | HA Platform | Transport | Notes | 
-|--------|----|-----------|-------|-------|
 <!-- Keep these in Alphabetical order -->
-| Security Panel | ✅ <br/> IQ4 | `alarm_control_panel` | WebSocket | Arm/Away/Stay/Night/Disarm |
+| Device | Community Tested | HA Platform | Transport | Notes |
+|--------|------------------|-------------|-----------|-------|
+| Battery levels | ✅ <br/> Yale Assure Lock | `sensor` (%) | WebSocket | Per-device diagnostic |
+| CO detectors | 🟧 <br/> | `binary_sensor` (CO) | WebSocket | |
+| Color-temp lights | ✅ <br/> Zipato RGBW Bulb | `light` | WebSocket | Warm/cool white |
 | Contact sensors (door/window) | ✅ <br/> QS1135-840 | `binary_sensor` (DOOR) | WebSocket | |
-| Motion sensors | ✅ <br/> No tested physical devices, but states are reporting | `binary_sensor` (MOTION) | WebSocket | |
-| Smoke/heat detectors | 🟧 <br/> | `binary_sensor` (SMOKE) | WebSocket | |
-| CO detectors | 🟧 <br/>  | `binary_sensor` (CO) | WebSocket | |
-| Water/leak sensors | 🟧 <br/>  | `binary_sensor` (MOISTURE) | WebSocket | |
-| Gas sensors | 🟧 <br/> | `binary_sensor` (GAS) | WebSocket | |
-| Glassbreak sensors | ✅ <br/> States are reporting on IQ4. Have not been able to trigger a glass break sound to test that state. | `binary_sensor` (SOUND) | WebSocket | |
-| Locks | ✅ <br/> Yale Assure series locks | `lock` | WebSocket | |
-| Lights (on/off, dimmable) | ✅ Zipato RGBW Bulb | `light` | WebSocket | These would be physical light bulbs. |
-| RGB lights | ✅ <br/> Zipato RGBW Bulb | `light` | WebSocket | Full RGB color control |
-| Color-temp lights | ✅  <br/> Zipato RGBW Bulb | `light` | WebSocket | Warm/cool white |
-| On/off switches | ✅ <br/> Jasco 46562  |`switch` | WebSocket | I believe outlet switches would be under this category too |
-| Dimmable switches | 🟧  <br/>  |`switch` | WebSocket | I believe outlet switches would be under this category too |
-| Thermostats | 🟧 <br/> | `climate` | WebSocket | All modes, humidity, fan presets |
-| Garage doors | 🟧 <br/> | `cover` (GARAGE) | WebSocket | |
+| Dimmable switches | ✅ <br/> | `switch` | WebSocket | |
+| Garage doors | ✅  <br/> | `cover` (GARAGE) | WebSocket | |
+| Gas sensors | 🟧 <br/> | `binary_sensor` (GAS) | WebSocket | This is I assume a propane sensor |
 | Gates | 🟧 <br/> | `cover` (GATE) | WebSocket | |
-| Water valves | ✅ <br/> Econet Water Valve | `valve` | WebSocket | |
-| Water meters | ✅ <br/> ADC-SHM-100 | `sensor` (gal/L) | Poll (1 hr) | Usage today + Daily Average|
+| Glassbreak sensors | ✅ <br/> States are reporting on IQ4. Have not been able to trigger a glass break sound to test that state. | `binary_sensor` (SOUND) | WebSocket | |
 | Image sensors | 🟧 <br/> | `image` | Poll (30 min) | |
-| Battery levels | ✅ <br/> Yale Assure Lock |`sensor` (%) | WebSocket | Per-device diagnostic |
-| Malfunction state | ✅ | `binary_sensor` (PROBLEM) | WebSocket | Per-device diagnostic |
+| Lights (on/off, dimmable) | ✅ <br/> Zipato RGBW Bulb | `light` | WebSocket | These would be physical light bulbs. |
+| Locks | ✅ <br/> Yale Assure series locks | `lock` | WebSocket | |
 | Low battery state | ✅ | `binary_sensor` (BATTERY) | WebSocket | Per-device diagnostic |
+| Malfunction state | ✅ | `binary_sensor` (PROBLEM) | WebSocket | Per-device diagnostic |
+| Motion sensors | ✅ <br/> No tested physical devices, but states are reporting | `binary_sensor` (MOTION) | WebSocket | |
+| On/off switches | ✅ <br/> Jasco 46562 | `switch` | WebSocket | I believe outlet switches would be under this category too |
+| RGB lights | ✅ <br/> Zipato RGBW Bulb | `light` | WebSocket | Full RGB color control |
+| Security Panel | ✅ <br/> IQ4 | `alarm_control_panel` | WebSocket | Arm/Away/Stay/Night/Disarm |
+| Smoke/heat detectors | 🟧 <br/> | `binary_sensor` (SMOKE) | WebSocket | |
+| Thermostats | ✅  <br/> Dreamstat Gen 2 | `climate` | WebSocket | Reports in Home assistant units. For example, your ADC system is in metric but your HA system is in imperial, the device will output imperial. |
+| Temperature Sensors | 🟧 <br/> Phyiscal device tested, however support seemed intermitent | `climate` | WebSocket | Reports in Home assistant units. For example, your ADC system is in metric but your HA system is in imperial, the device will output imperial. |
+| Water meters | ✅ <br/> ADC-SHM-100 | `sensor` (gal/L) | Poll (1 hr) | Usage today + Daily Average |
+| Water valves | ✅ <br/> Econet Water Valve | `valve` | WebSocket | |
+| Water/leak sensors | ✅  <br/> | `binary_sensor` (MOISTURE) | WebSocket | |
 
 ## Devices Not Supported (Blacklisted)
 
 | Device | Reason |
 |--------|--------|
-| GPS Trackers | Privacy-sensitive; geolocation is better handled by HA's native `device_tracker` platform via the mobile companion app. Would duplicate functionality with worse UX. |
+| Location Devices (your phone) | Privacy-sensitive; geolocation is better handled by HA's native `device_tracker` platform via the mobile companion app. Would duplicate functionality with worse UX. |
 | Access Card Readers | Commercial-only ADC product. Consumer ADC accounts cannot access these. Access control management is also out of scope for a home automation integration. |
 | Power Meters | Requires deep HA Energy dashboard integration. ADC's power meter data is also available via dedicated energy integrations with better support. |
 | IQ Router | Network device management is out of scope for home automation. |
 | ADC Geo Devices | Redundant with HA's mobile companion app device tracker. |
 | ADC Scenes | Conflicts with HA's own automation and scene system. Using ADC scenes from HA would create confusing UX. |
-| X10 Lights | X10 protocol is obsolete (pre-2000). No modern installations to support or test against. |
-| Shades | Not available in the current ADC consumer API. No live devices to test against. |
 
 ## Planned Future Devices
 
@@ -63,6 +62,7 @@ Submit issue requests with the device type and model and we will try to get it a
 
 | Device | HA Platform | Priority | Notes |
 |--------|-------------|----------|-------|
+| Shades | Unknown | Medium | Looking for an account with working shades to test with
 
 ---
 

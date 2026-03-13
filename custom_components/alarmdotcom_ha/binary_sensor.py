@@ -50,6 +50,7 @@ _DEVICE_CLASS_MAP: dict[DeviceType, BinarySensorDeviceClass] = {
     DeviceType.TEMPERATURE: BinarySensorDeviceClass.COLD,
     DeviceType.TEMPERATURE_SENSOR: BinarySensorDeviceClass.COLD,
     DeviceType.GAS: BinarySensorDeviceClass.GAS,
+    DeviceType.GARAGE_DOOR: BinarySensorDeviceClass.GARAGE_DOOR,
 }
 
 # Temperature sensors are real sensors (not binary) — exclude from binary sensor platform
