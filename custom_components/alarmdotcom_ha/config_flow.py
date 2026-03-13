@@ -99,7 +99,9 @@ async def _validate_credentials(
     base_url: str = _PROD_URL,
 ) -> dict[str, Any]:
     """Try logging in; return updated data dict or raise."""
-    session = aiohttp.ClientSession()
+    session = aiohttp.ClientSession(
+        timeout=aiohttp.ClientTimeout(total=15, connect=5)
+    )
     try:
         bridge = AlarmBridge(
             session, username, password, mfa_cookie=mfa_cookie, base_url=base_url
@@ -148,7 +150,9 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if url_error := _validate_base_url(raw_url):
                 errors[CONF_BASE_URL] = url_error
             else:
-                session = aiohttp.ClientSession()
+                session = aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=15, connect=5)
+                )
                 bridge = AlarmBridge(
                     session,
                     self._username,
@@ -249,14 +253,17 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             code = user_input[CONF_TWO_FACTOR_CODE].strip()
-            bridge = self._otp_bridge
-            try:
-                self._mfa_cookie = await bridge.auth.verify_otp(code, otp_type=self._otp_method)
-            except AuthenticationFailed:
-                errors["base"] = "invalid_code"
-            except Exception:
-                log.exception("Unexpected error during OTP verification")
-                errors["base"] = "unknown"
+            if not code.isdigit() or len(code) != 6:
+                errors["base"] = "invalid_code_format"
+            else:
+                bridge = self._otp_bridge
+                try:
+                    self._mfa_cookie = await bridge.auth.verify_otp(code, otp_type=self._otp_method)
+                except AuthenticationFailed:
+                    errors["base"] = "invalid_code"
+                except Exception:
+                    log.exception("Unexpected error during OTP verification")
+                    errors["base"] = "unknown"
 
             if not errors:
                 return await self.async_step_trust_device()
@@ -278,8 +285,9 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     await bridge.auth.trust_device()
                     self._mfa_cookie = bridge.auth.mfa_cookie
                     log.debug("trust_device step: mfa_cookie len=%d", len(self._mfa_cookie))
-                except Exception:
-                    log.warning("Could not trust device; proceeding anyway.")
+                except Exception as err:
+                    log.warning("Could not mark device as trusted: %s", err)
+                    log.info("Device trust failed; you will be prompted for a two-factor code on the next login.")
 
             # Done with the OTP bridge — clean up
             if bridge:
@@ -328,7 +336,9 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             self._password = user_input[CONF_PASSWORD]
-            session = aiohttp.ClientSession()
+            session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=15, connect=5)
+            )
             bridge = AlarmBridge(
                 session,
                 self._username,
