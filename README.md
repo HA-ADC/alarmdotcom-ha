@@ -9,6 +9,8 @@ Home Assistant custom integration for Alarm.com, built on [`pyadc`](../pyadc/). 
 - Entities go **unavailable** automatically when the WebSocket connection drops
 - WebSocket DEAD state (JWT expiry) triggers automatic HA config entry reload → re-auth
 - Fixes known community bugs: `CoverDeviceClass.GATE` for gates, full climate support, battery sensors enabled
+- **Extended arming services** — `arm_away_options`, `arm_stay_options`, `arm_night_options` accept optional `silent_arming`, `force_bypass`, and `no_entry_delay` flags (callable from HA automations/scripts)
+- **Optimistic lock UI** — lock/unlock show `locking`/`unlocking` states while the command is in-flight
 
 ## Supported Devices
 
@@ -40,7 +42,7 @@ Below is a table of the currently supported device types. Under the communiy tes
 | Security Panel | ✅ <br/> IQ4 | `alarm_control_panel` | WebSocket | Arm/Away/Stay/Night/Disarm |
 | Smoke/heat detectors | 🟧 <br/> | `binary_sensor` (SMOKE) | WebSocket | |
 | Thermostats | ✅  <br/> Dreamstat Gen 2 | `climate` | WebSocket | Reports in Home assistant units. For example, your ADC system is in metric but your HA system is in imperial, the device will output imperial. |
-| Temperature Sensors | 🟧 <br/> Phyiscal device tested, however support seemed intermitent | `climate` | WebSocket | Reports in Home assistant units. For example, your ADC system is in metric but your HA system is in imperial, the device will output imperial. |
+| Temperature Sensors | 🟧 <br/> Physical device tested, however support seemed intermittent | `sensor` (temperature) | WebSocket | Reports in Home Assistant units (respects HA's unit system preference). |
 | Water meters | ✅ <br/> ADC-SHM-100 | `sensor` (gal/L) | Poll (1 hr) | Usage today + Daily Average |
 | Water valves | ✅ <br/> Econet Water Valve | `valve` | WebSocket | |
 | Water/leak sensors | ✅  <br/> | `binary_sensor` (MOISTURE) | WebSocket | |
@@ -121,10 +123,10 @@ alarmdotcom_ha/
     ├── binary_sensor.py
     ├── climate.py            # Full feature set: FAN_ONLY, humidity, presets, hvac_action
     ├── cover.py              # GarageDoor (GARAGE) + Gate (GATE device class)
-    ├── image.py              # Image sensors — polls 1/min for image URL
+    ├── image.py              # Image sensors — polls every 30 min for image URL
     ├── light.py              # on/off, dimming, RGB, color temp
     ├── lock.py
-    ├── sensor.py             # Battery %, thermostat temp/humidity
+    ├── sensor.py             # Battery %, temperature sensors, thermostat temp/humidity, water usage
     └── valve.py
 ```
 
