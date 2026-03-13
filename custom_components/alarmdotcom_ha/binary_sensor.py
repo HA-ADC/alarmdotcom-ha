@@ -52,6 +52,9 @@ _DEVICE_CLASS_MAP: dict[DeviceType, BinarySensorDeviceClass] = {
     DeviceType.GAS: BinarySensorDeviceClass.GAS,
 }
 
+# Temperature sensors are real sensors (not binary) — exclude from binary sensor platform
+_BINARY_SENSOR_EXCLUDED_TYPES = {DeviceType.TEMPERATURE, DeviceType.TEMPERATURE_SENSOR}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -63,9 +66,10 @@ async def async_setup_entry(
 
     entities: list[BinarySensorEntity] = []
 
-    # Main sensor entities
+    # Main sensor entities (exclude temperature sensors — they get real sensor entities)
     for sensor in hub.bridge.sensors.devices:
-        entities.append(AdcBinarySensor(hub, sensor))
+        if sensor.device_type not in _BINARY_SENSOR_EXCLUDED_TYPES:
+            entities.append(AdcBinarySensor(hub, sensor))
 
     # Water sensor moisture state entities
     for water_sensor in hub.bridge.water_sensors.devices:

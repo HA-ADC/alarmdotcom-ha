@@ -130,14 +130,14 @@ class AdcClimate(AdcEntity[Thermostat], ClimateEntity):
     def __init__(self, hub: AlarmHub, thermostat: Thermostat) -> None:
         super().__init__(hub, thermostat)
 
-        hvac_modes = list(_HVAC_MODE_MAP.values())
-        # Deduplicate while preserving order
-        seen: set[HVACMode] = set()
+        # Build hvac_modes from the device's explicit supported modes list
         unique_modes: list[HVACMode] = []
-        for m in hvac_modes:
-            if m not in seen:
-                seen.add(m)
-                unique_modes.append(m)
+        seen: set[HVACMode] = set()
+        for adc_mode in thermostat.supported_temperature_modes:
+            ha_mode = _HVAC_MODE_MAP.get(adc_mode)
+            if ha_mode is not None and ha_mode not in seen:
+                seen.add(ha_mode)
+                unique_modes.append(ha_mode)
         if thermostat.supports_fan_only:
             unique_modes.append(HVACMode.FAN_ONLY)
         self._attr_hvac_modes = unique_modes
@@ -223,18 +223,21 @@ class AdcClimate(AdcEntity[Thermostat], ClimateEntity):
         return _PRESET_MAP.get(self._device.setpoint_type)
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        """Set HVAC mode."""
+        """Set HVAC mode, optimistically updating local state so HA reflects it immediately."""
         adc_mode = _HA_TO_ADC_MODE.get(hvac_mode)
         if adc_mode is None:
             log.warning("Unsupported HVAC mode: %s", hvac_mode)
             return
+        # Optimistic: update the model immediately so the UI doesn't flicker.
+        self._device.state = adc_mode
+        self.async_write_ha_state()
         await self._hub.bridge.thermostats.set_state(
             self._device.resource_id,
             mode=adc_mode,
         )
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        """Set target temperature."""
+        """Set target temperature, updating model optimistically so HA reflects it immediately."""
         heat_setpoint = kwargs.get(ATTR_TARGET_TEMP_LOW) or kwargs.get(ATTR_TEMPERATURE)
         cool_setpoint = kwargs.get(ATTR_TARGET_TEMP_HIGH) or kwargs.get(ATTR_TEMPERATURE)
 
@@ -244,6 +247,13 @@ class AdcClimate(AdcEntity[Thermostat], ClimateEntity):
             cool_setpoint = None
         elif mode in (ThermostatTemperatureMode.COOL, ThermostatTemperatureMode.ENERGY_SAVE_COOL):
             heat_setpoint = None
+
+        # Optimistic: update model immediately so UI reflects the change before WS confirms.
+        if heat_setpoint is not None:
+            self._device.target_temperature_heat = heat_setpoint
+        if cool_setpoint is not None:
+            self._device.target_temperature_cool = cool_setpoint
+        self.async_write_ha_state()
 
         await self._hub.bridge.thermostats.set_state(
             self._device.resource_id,

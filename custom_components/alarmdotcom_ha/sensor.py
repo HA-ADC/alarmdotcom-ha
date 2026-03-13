@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -21,6 +21,7 @@ from pyadc.events import EventBrokerTopic
 from pyadc.models.base import AdcDeviceResource
 from pyadc.models.thermostat import Thermostat
 from pyadc.models.water_meter import WaterMeter
+from pyadc.models.sensor import Sensor
 
 from .const import DATA_BRIDGE, DOMAIN
 from .hub import AlarmHub
@@ -57,6 +58,10 @@ async def async_setup_entry(
         entities.append(AdcThermostatTemperatureSensor(hub, thermostat))
         if thermostat.supports_humidity_control:
             entities.append(AdcThermostatHumiditySensor(hub, thermostat))
+
+    for sensor in hub.bridge.sensors.devices:
+        if sensor.is_temperature_sensor:
+            entities.append(AdcTemperatureSensor(hub, sensor))
 
     for meter in hub.bridge.water_meters.devices:
         entities.append(AdcWaterUsageTodaySensor(hub, meter))
@@ -152,7 +157,6 @@ class AdcThermostatTemperatureSensor(_AdcSensorBase):
     def __init__(self, hub: AlarmHub, thermostat: Thermostat) -> None:
         super().__init__(hub, thermostat)
         self._attr_unique_id = f"{thermostat.resource_id}_temperature"
-        from homeassistant.const import UnitOfTemperature
         self._attr_native_unit_of_measurement = (
             UnitOfTemperature.CELSIUS
             if thermostat.temperature_unit == "C"
@@ -163,6 +167,35 @@ class AdcThermostatTemperatureSensor(_AdcSensorBase):
     def native_value(self) -> float | None:
         """Return current temperature."""
         return self._device.current_temperature
+
+
+class AdcTemperatureSensor(_AdcSensorBase):
+    """Standalone temperature sensor (PowerG, Z-wave, etc.)
+
+    Initial value comes from commercialTemperatureSensors REST on startup
+    (already in account's preferred unit). Live updates come via
+    PropertyChangeWSMessage (always °F). HA auto-converts between units.
+    """
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_name = "Temperature"
+
+    def __init__(self, hub: AlarmHub, sensor: Sensor) -> None:
+        super().__init__(hub, sensor)
+        self._attr_unique_id = f"{sensor.resource_id}_temperature"
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        return (
+            UnitOfTemperature.CELSIUS
+            if self._device.temperature_unit == "C"
+            else UnitOfTemperature.FAHRENHEIT
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        return self._device.temperature
 
 
 class AdcThermostatHumiditySensor(_AdcSensorBase):
