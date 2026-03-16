@@ -1,16 +1,24 @@
 # alarmdotcom_ha — Home Assistant Integration
 
-Home Assistant custom integration for Alarm.com, built on [`pyadc`](../pyadc/). All device state is **WebSocket-pushed** — no polling except image sensors (every 30 min) and water meters (every 1 hour).
+Unofficial Home Assistant custom integration for Alarm.com, built on [`pyadc`](https://github.com/HA-ADC/pyadc). Built by an alarm.com engineer to utilize websockets and official api endpoints. This is an unofficial Alarm.com integration and **should not** be used as a replacement for home security. An Alarm.com subscription is also required to utilize this pacakge.
+
+## Safety Warnings
+This integration is intended for casual use with Home Assistant and not as a replacement too keep you safe.
+
+- This integration communicates with Alarm.com over a channel that can be broken or changed at any time.
+- It may take several minutes for this integration to receive a status update from Alarm.com's servers.
+- Your automations may be buggy.
+- This code may be buggy. It's written by volunteers in their free time and testing is spotty.
+- You should use Alarm.com's official apps, devices, and services for notifications of all kinds related to safety, break-ins, property damage (e.g.: freeze sensors), etc.
+
+Where possible, use local control for smart home devices that are natively supported by Home Assistant (lights, garage door openers, etc.). Locally controlled devices will continue to work during internet outages whereas this integraiton will not.
 
 ## Features
 
-- Real-time state updates via WebSocket (no polling)
+- Real-time state updates via WebSocket
 - Config flow with username/password, OTP/2FA, and device trust
-- Entities go **unavailable** automatically when the WebSocket connection drops
-- WebSocket DEAD state (JWT expiry) triggers automatic HA config entry reload → re-auth
-- Fixes known community bugs: `CoverDeviceClass.GATE` for gates, full climate support, battery sensors enabled
-- **Extended arming services** — `arm_away_options`, `arm_stay_options`, `arm_night_options` accept optional `silent_arming`, `force_bypass`, and `no_entry_delay` flags (callable from HA automations/scripts)
-- **Optimistic lock UI** — lock/unlock show `locking`/`unlocking` states while the command is in-flight
+- Utilizing official api endpoints and websocket messages to help ensure reliability
+- Large amount of device support
 
 ## Supported Devices
 
@@ -55,7 +63,6 @@ Below is a table of the currently supported device types. Under the communiy tes
 | Access Card Readers | Commercial-only ADC product. Consumer ADC accounts cannot access these. Access control management is also out of scope for a home automation integration. |
 | Power Meters | Requires deep HA Energy dashboard integration. ADC's power meter data is also available via dedicated energy integrations with better support. |
 | IQ Router | Network device management is out of scope for home automation. |
-| ADC Geo Devices | Redundant with HA's mobile companion app device tracker. |
 | ADC Scenes | Conflicts with HA's own automation and scene system. Using ADC scenes from HA would create confusing UX. |
 
 ## Planned Future Devices
