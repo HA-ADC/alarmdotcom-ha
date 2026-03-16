@@ -1,7 +1,7 @@
 {
   "domain": "alarmdotcom_ha",
   "name": "Alarm.com (pyadc)",
-  "codeowners": [],
+  "codeowners": ["trentonamor24@gmail.com"],
   "config_flow": true,
   "documentation": "https://github.com/example/pyadc",
   "homekit": {},
