@@ -46,7 +46,6 @@
     "error": {
       "invalid_auth": "Invalid username or password.",
       "invalid_code": "Verification code is incorrect or has expired. Request a new code and try again.",
-      "invalid_code_format": "OTP code must be exactly 6 digits.",
       "cannot_connect": "Unable to connect to Alarm.com. Please try again.",
       "invalid_url": "Invalid URL. Enter a hostname (e.g. alarm.com) or full URL (e.g. https://alarm.com).",
       "otp_send_failed": "Failed to send verification code. Please try again.",
