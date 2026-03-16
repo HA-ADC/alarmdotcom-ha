@@ -9,6 +9,6 @@
   "iot_class": "cloud_push",
   "loggers": ["pyadc"],
   "quality_scale": "silver",
-  "requirements": ["pyadc @ git+https://github.com/HA-ADC/pyadc@06187ec"],
+  "requirements": ["pyadc @ git+https://github.com/HA-ADC/pyadc@v0.1.0-alpha"],
   "version": "2025.1.0"
 }
