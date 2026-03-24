@@ -187,7 +187,7 @@ class AdcWaterMeterAnomalySensor(BinarySensorEntity):
             identifiers={(DOMAIN, meter.resource_id)},
             name=meter.name,
             manufacturer="Alarm.com",
-            model="ADC-SHM-100-A",
+            model=meter.model_label,
         )
 
     async def async_added_to_hass(self) -> None:
@@ -244,7 +244,7 @@ class AdcWaterCalibrationSensor(BinarySensorEntity):
             identifiers={(DOMAIN, meter.resource_id)},
             name=meter.name,
             manufacturer="Alarm.com",
-            model="ADC-SHM-100-A",
+            model=meter.model_label,
         )
 
     async def async_added_to_hass(self) -> None:

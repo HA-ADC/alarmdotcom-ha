@@ -37,7 +37,10 @@ async def async_setup_entry(
 class AdcSwitch(AdcEntity[Light], SwitchEntity):
     """Alarm.com on/off switch as a HA switch entity."""
 
-    _attr_icon = "mdi:light-switch"
+    @property
+    def icon(self) -> str:
+        """Return icon reflecting the current switch state."""
+        return "mdi:toggle-switch-variant" if self.is_on else "mdi:toggle-switch-variant-off"
 
     @property
     def is_on(self) -> bool:

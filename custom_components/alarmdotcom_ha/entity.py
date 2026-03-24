@@ -53,11 +53,12 @@ class AdcEntity(Entity, Generic[AdcDeviceT]):
         self._hub = hub
         self._device = device
         self._attr_unique_id = device.resource_id
-        self._attr_name = device.name
+        self._attr_name = None
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, device.resource_id)},
             name=device.name,
             manufacturer="Alarm.com",
+            model=device.model_label,
         )
 
     @property
