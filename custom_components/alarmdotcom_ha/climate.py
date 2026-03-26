@@ -228,7 +228,6 @@ class AdcClimate(AdcEntity[Thermostat], ClimateEntity):
         if adc_mode is None:
             log.warning("Unsupported HVAC mode: %s", hvac_mode)
             return
-        # Optimistic: update the model immediately so the UI doesn't flicker.
         self._device.state = adc_mode
         self.async_write_ha_state()
         await self._hub.bridge.thermostats.set_state(

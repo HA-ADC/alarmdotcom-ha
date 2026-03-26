@@ -135,7 +135,7 @@ class AlarmHub:
                     "scheduling config entry reload to re-authenticate."
                 )
                 self._hass.async_create_task(
-                    self._hass.config_entries.async_reload(self._entry.entry_id)
+                    self._reload_after_shutdown()
                 )
             else:
                 remaining = int(DEAD_RELOAD_COOLDOWN_S - elapsed)
@@ -158,6 +158,16 @@ class AlarmHub:
             updated = {**self._entry.data, CONF_SEAMLESS_TOKEN: token}
             self._hass.config_entries.async_update_entry(self._entry, data=updated)
             log.debug("alarmdotcom_ha: seamless login token persisted (rotated)")
+
+    async def _reload_after_shutdown(self) -> None:
+        """Tear down the current session, then trigger a config-entry reload.
+
+        Called when the WebSocket enters the DEAD state.  Shutting down first
+        ensures stale connections and zombie tasks are cleaned up before HA
+        re-creates the config entry.
+        """
+        await self.shutdown()
+        await self._hass.config_entries.async_reload(self._entry.entry_id)
 
     async def shutdown(self) -> None:
         """Stop WebSocket, water poll, and close the HTTP session."""

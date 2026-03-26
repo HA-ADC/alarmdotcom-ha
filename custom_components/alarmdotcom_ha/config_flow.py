@@ -187,9 +187,9 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 except ServiceUnavailable:
                     await session.close()
                     errors["base"] = "cannot_connect"
-                except Exception:
+                except Exception as exc:
                     await session.close()
-                    log.exception("Unexpected error during alarmdotcom_ha setup")
+                    log.error("Unexpected error during alarmdotcom_ha setup: %s", exc)
                     errors["base"] = "unknown"
 
         schema = STEP_USER_SCHEMA
@@ -226,8 +226,8 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 elif method == "email":
                     await bridge.auth.send_otp_email()
                 # app method doesn't need a send — code is already in the app
-            except Exception:
-                log.exception("Failed to send OTP via %s", method)
+            except Exception as exc:
+                log.error("Failed to send OTP via %s: %s", method, exc)
                 errors["base"] = "otp_send_failed"
 
             if not errors:
@@ -254,8 +254,8 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._mfa_cookie = await bridge.auth.verify_otp(code, otp_type=self._otp_method)
             except AuthenticationFailed:
                 errors["base"] = "invalid_code"
-            except Exception:
-                log.exception("Unexpected error during OTP verification")
+            except Exception as exc:
+                log.error("Unexpected error during OTP verification: %s", exc)
                 errors["base"] = "unknown"
 
             if not errors:
@@ -277,7 +277,7 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 try:
                     await bridge.auth.trust_device()
                     self._mfa_cookie = bridge.auth.mfa_cookie
-                    log.debug("trust_device step: mfa_cookie len=%d", len(self._mfa_cookie))
+                    log.debug("trust_device step: MFA cookie set")
                 except Exception:
                     log.warning("Could not trust device; proceeding anyway.")
 
@@ -362,9 +362,9 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except ServiceUnavailable:
                 await session.close()
                 errors["base"] = "cannot_connect"
-            except Exception:
+            except Exception as exc:
                 await session.close()
-                log.exception("Unexpected error during alarmdotcom_ha re-auth")
+                log.error("Unexpected error during alarmdotcom_ha re-auth: %s", exc)
                 errors["base"] = "unknown"
 
         return self.async_show_form(

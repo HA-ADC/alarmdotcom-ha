@@ -105,26 +105,26 @@ class AdcLight(AdcEntity[Light], LightEntity):
             self._device.rgb_color = rgb
         self.async_write_ha_state()
 
-        await self._hub.bridge.lights.turn_on(
-            self._device.resource_id,
-            brightness=adc_brightness,
-        )
-
-        if rgb is not None:
-            r, g, b = rgb
-            hex_color = f"#{r:02X}{g:02X}{b:02X}"
-            _format_code = {"RGBW": 1, "RGB": 2, "WARM_TO_COOL": 3, "HSV": 4}
-            color_format = _format_code.get(self._device.light_color_format or "", 1)
-            await self._hub.bridge.lights.set_color(
+        async def _send() -> None:
+            await self._hub.bridge.lights.turn_on(
                 self._device.resource_id,
-                hex_color,
-                color_format,
+                brightness=adc_brightness,
             )
+            if rgb is not None:
+                r, g, b = rgb
+                hex_color = f"#{r:02X}{g:02X}{b:02X}"
+                _format_code = {"RGBW": 1, "RGB": 2, "WARM_TO_COOL": 3, "HSV": 4}
+                color_format = _format_code.get(self._device.light_color_format or "", 1)
+                await self._hub.bridge.lights.set_color(
+                    self._device.resource_id,
+                    hex_color,
+                    color_format,
+                )
+
+        await _send()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the light off."""
-        # Optimistic update — reflect the change immediately in the UI.
         self._device.state = LightState.OFF
         self.async_write_ha_state()
-
         await self._hub.bridge.lights.turn_off(self._device.resource_id)

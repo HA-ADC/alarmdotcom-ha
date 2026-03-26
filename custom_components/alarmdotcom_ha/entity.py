@@ -15,7 +15,7 @@ without any thread-safety concerns.
 from __future__ import annotations
 
 import logging
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from homeassistant.helpers.entity import DeviceInfo, Entity
 
