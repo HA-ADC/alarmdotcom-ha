@@ -3,12 +3,12 @@
   "name": "Alarm.com (pyadc)",
   "codeowners": ["trentonamor24@gmail.com"],
   "config_flow": true,
-  "documentation": "https://github.com/example/pyadc",
+  "documentation": "https://github.com/HA-ADC/pyadc/blob/main/README.md",
   "homekit": {},
   "integration_type": "hub",
   "iot_class": "cloud_push",
   "loggers": ["pyadc"],
   "quality_scale": "silver",
-  "requirements": ["pyadc @ git+https://github.com/HA-ADC/pyadc@v0.1.3-alpha"],
+  "requirements": ["pyadc @ git+https://github.com/HA-ADC/pyadc@v0.2.0-alpha"],
   "version": "2025.1.0"
 }
