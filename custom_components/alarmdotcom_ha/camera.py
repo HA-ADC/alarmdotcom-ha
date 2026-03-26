@@ -209,6 +209,20 @@ class AdcCamera(AdcEntity[Camera], HaCamera):
             ice_servers,
         )
 
+        # Register a stopped callback so Janus can tear down the session
+        # from our dict if the stream dies (RTSP timeout, camera offline, etc.).
+        # This gives the browser a clean disconnect rather than a frozen frame.
+        def _on_janus_stopped() -> None:
+            log.debug(
+                "Camera %s: Janus stream stopped — removing session %s",
+                self._device.resource_id,
+                session_id,
+            )
+            self._pending_candidates.pop(session_id, None)
+            self._janus_sessions.pop(session_id, None)
+
+        janus._on_stopped = _on_janus_stopped
+
         # Store the session BEFORE calling start() so that trickle ICE candidates
         # from the browser (which arrive almost immediately after we process the offer)
         # are queued in janus._browser_trickle_queue rather than dropped.
