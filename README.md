@@ -228,6 +228,46 @@ logger:
 
 ---
 
+## Updating the pyadc Dependency
+
+`alarmdotcom_ha` depends on `pyadc` via a pinned git tag in `manifest.json`. When a new `pyadc` version is released:
+
+### 1. Update `manifest.json`
+
+```json
+"requirements": ["pyadc @ git+https://github.com/HA-ADC/pyadc@vX.Y.Z"]
+```
+
+Replace `vX.Y.Z` with the new tag. The tag must exist in the `pyadc` repository before HA tries to install it.
+
+### 2. Commit and push
+
+```bash
+git add custom_components/alarmdotcom_ha/manifest.json
+git commit -m "chore: update pyadc dependency to vX.Y.Z"
+git push origin main
+```
+
+### 3. Test in production HA
+
+On a real HA instance (with internet access), reload or reinstall the integration — HA will pip-install the new `pyadc` version from GitHub automatically.
+
+### Dev environment note
+
+The devcontainer has **no internet access** — HA cannot fetch from the git URL. For local dev:
+1. Keep `manifest.json` as `"pyadc"` (no URL) in the container only
+2. Copy pyadc source directly into the container's venv:
+
+```bash
+docker cp pyadc/. hungry_fermat:/tmp/pyadc/
+docker exec hungry_fermat bash -c \
+  "cp -r /tmp/pyadc/pyadc/* /home/vscode/.local/ha-venv/lib/python3.14/site-packages/pyadc/"
+```
+
+The committed `manifest.json` always keeps the real git URL — only patch it locally.
+
+---
+
 ## License
 
 MIT
