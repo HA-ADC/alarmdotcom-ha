@@ -1,9 +1,9 @@
 # alarmdotcom_ha — Home Assistant Integration
 
-Unofficial Home Assistant custom integration for Alarm.com, built on [`pyadc`](https://github.com/HA-ADC/pyadc). Built by an alarm.com engineer to utilize websockets and official api endpoints. This is an unofficial Alarm.com integration and **should not** be used as a replacement for home security. An Alarm.com subscription is also required to utilize this pacakge.
+Unofficial Home Assistant custom integration for Alarm.com, built on [`pyadc`](https://github.com/HA-ADC/pyadc). Built by an alarm.com engineer to utilize websockets and official api endpoints. This is an unofficial Alarm.com integration and **should not** be used as a replacement for home security. An Alarm.com subscription is also required to utilize this package.
 
 ## Safety Warnings
-This integration is intended for casual use with Home Assistant and not as a replacement too keep you safe.
+This integration is intended for casual use with Home Assistant and not as a replacement to keep you safe.
 
 - This integration communicates with Alarm.com over a channel that can be broken or changed at any time.
 - It may take several minutes for this integration to receive a status update from Alarm.com's servers.
@@ -11,7 +11,7 @@ This integration is intended for casual use with Home Assistant and not as a rep
 - This code may be buggy. It's written by volunteers in their free time and testing is spotty.
 - You should use Alarm.com's official apps, devices, and services for notifications of all kinds related to safety, break-ins, property damage (e.g.: freeze sensors), etc.
 
-Where possible, use local control for smart home devices that are natively supported by Home Assistant (lights, garage door openers, etc.). Locally controlled devices will continue to work during internet outages whereas this integraiton will not.
+Where possible, use local control for smart home devices that are natively supported by Home Assistant (lights, garage door openers, etc.). Locally controlled devices will continue to work during internet outages whereas this integration will not.
 
 ## Features
 
@@ -19,6 +19,8 @@ Where possible, use local control for smart home devices that are natively suppo
 - Config flow with username/password, OTP/2FA, and device trust
 - Utilizing official api endpoints and websocket messages to help ensure reliability
 - Large amount of device support
+- Optimistic state updates — UI reflects changes instantly before server confirmation
+- Seamless token rotation — persisted across restarts for fast re-authentication
 
 ## Supported Devices
 
@@ -122,7 +124,7 @@ alarmdotcom_ha/
     ├── hub.py                # AlarmHub — owns session, AlarmBridge, WS state tracking
     ├── entity.py             # AdcEntity[T] — base entity, EventBroker subscription, availability
     ├── config_flow.py        # ConfigFlow: user → two_factor → trust_device → reauth
-    ├── const.py              # DOMAIN, config key constants
+    ├── const.py              # DOMAIN, config key constants, WATER_METER_DEVICE_TYPE
     ├── manifest.json         # HA integration metadata (domain, requirements, iot_class)
     ├── strings.json          # Config flow UI string keys
     ├── translations/en.json  # English UI strings
@@ -133,6 +135,8 @@ alarmdotcom_ha/
     ├── image.py              # Image sensors — polls every 30 min for image URL
     ├── light.py              # on/off, dimming, RGB, color temp
     ├── lock.py
+    ├── button.py             # Camera peek-in-now button
+    ├── switch.py             # On/off light switches (DeviceType 17)
     ├── sensor.py             # Battery %, temperature sensors, thermostat temp/humidity, water usage
     └── valve.py
 ```
@@ -170,6 +174,7 @@ _handle_connection_event(DEAD)         → hub.connected = False → schedule co
    ```python
    from homeassistant.components.my_platform import MyEntity
    from pyadc.models.my_device import MyDevice
+   from .const import DATA_BRIDGE, DOMAIN
    from .entity import AdcEntity
    from .hub import AlarmHub
 
