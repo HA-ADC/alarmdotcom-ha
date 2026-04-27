@@ -11,9 +11,11 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from pyadc.const import DeviceType
+from pyadc.events import EventBrokerTopic
 from pyadc.models.base import AdcDeviceResource
 from pyadc.models.sensor import Sensor
 from pyadc.models.water_meter import WaterMeter
@@ -164,25 +166,20 @@ class AdcWaterMoistureSensor(AdcEntity[WaterSensor], BinarySensorEntity):
         return self._device.is_wet
 
 
-class AdcWaterMeterAnomalySensor(BinarySensorEntity):
-    """Water Dragon anomaly alert binary sensor.
+class _AdcWaterMeterBinaryBase(BinarySensorEntity):
+    """Base class for water meter binary sensor entities.
 
-    True when the most recent daily data point has a trouble condition
-    (``htc=true`` in the XML) or the device is reporting a leak state.
+    Handles EventBroker subscription for polled water meter updates and
+    refreshes the meter reference from the controller on each poll.
     """
 
-    _attr_device_class = BinarySensorDeviceClass.PROBLEM
-    _attr_has_entity_name = True
-    _attr_name = "Water Anomaly"
-    _attr_icon = "mdi:water-alert"
     should_poll = False
+    _attr_has_entity_name = True
 
     def __init__(self, hub: AlarmHub, meter: WaterMeter) -> None:
         self._hub = hub
         self._meter = meter
         self._unsubscribe_refresh = None
-        self._attr_unique_id = f"{meter.resource_id}_anomaly"
-        from homeassistant.helpers.entity import DeviceInfo
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, meter.resource_id)},
             name=meter.name,
@@ -191,7 +188,7 @@ class AdcWaterMeterAnomalySensor(BinarySensorEntity):
         )
 
     async def async_added_to_hass(self) -> None:
-        from pyadc.events import EventBrokerTopic
+        """Subscribe to water meter refresh events."""
         self._unsubscribe_refresh = self._hub.bridge.event_broker.subscribe(
             [EventBrokerTopic.RESOURCE_UPDATED],
             self._handle_refresh,
@@ -199,6 +196,7 @@ class AdcWaterMeterAnomalySensor(BinarySensorEntity):
         )
 
     async def async_will_remove_from_hass(self) -> None:
+        """Unsubscribe on removal."""
         if self._unsubscribe_refresh is not None:
             self._unsubscribe_refresh()
             self._unsubscribe_refresh = None
@@ -214,61 +212,35 @@ class AdcWaterMeterAnomalySensor(BinarySensorEntity):
         """Water meter entities are polled — available as long as data was fetched."""
         return self._hub.bridge.water_meters.get(self._meter.resource_id) is not None
 
+
+class AdcWaterMeterAnomalySensor(_AdcWaterMeterBinaryBase):
+    """Water Dragon anomaly alert binary sensor."""
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_name = "Water Anomaly"
+    _attr_icon = "mdi:water-alert"
+
+    def __init__(self, hub: AlarmHub, meter: WaterMeter) -> None:
+        super().__init__(hub, meter)
+        self._attr_unique_id = f"{meter.resource_id}_anomaly"
+
     @property
     def is_on(self) -> bool:
         """Return True when a water anomaly / trouble condition is active."""
         return self._meter.is_leaking
 
 
-class AdcWaterCalibrationSensor(BinarySensorEntity):
-    """Diagnostic binary sensor: True when the water meter needs calibration.
-
-    The ADC API sets ``requiresCalibrationSetup`` when the device hasn't been
-    calibrated yet and its flow readings cannot be trusted.
-    """
+class AdcWaterCalibrationSensor(_AdcWaterMeterBinaryBase):
+    """Diagnostic binary sensor: True when the water meter needs calibration."""
 
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_has_entity_name = True
     _attr_name = "Needs Calibration"
     _attr_icon = "mdi:tune"
-    should_poll = False
 
     def __init__(self, hub: AlarmHub, meter: WaterMeter) -> None:
-        self._hub = hub
-        self._meter = meter
-        self._unsubscribe_refresh = None
+        super().__init__(hub, meter)
         self._attr_unique_id = f"{meter.resource_id}_needs_calibration"
-        from homeassistant.helpers.entity import DeviceInfo
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, meter.resource_id)},
-            name=meter.name,
-            manufacturer="Alarm.com",
-            model=meter.model_label,
-        )
-
-    async def async_added_to_hass(self) -> None:
-        from pyadc.events import EventBrokerTopic
-        self._unsubscribe_refresh = self._hub.bridge.event_broker.subscribe(
-            [EventBrokerTopic.RESOURCE_UPDATED],
-            self._handle_refresh,
-            device_id=self._meter.resource_id,
-        )
-
-    async def async_will_remove_from_hass(self) -> None:
-        if self._unsubscribe_refresh is not None:
-            self._unsubscribe_refresh()
-            self._unsubscribe_refresh = None
-
-    def _handle_refresh(self, _message: object) -> None:
-        refreshed = self._hub.bridge.water_meters.get(self._meter.resource_id)
-        if refreshed is not None:
-            self._meter = refreshed
-        self.async_write_ha_state()
-
-    @property
-    def available(self) -> bool:
-        return self._hub.bridge.water_meters.get(self._meter.resource_id) is not None
 
     @property
     def is_on(self) -> bool:

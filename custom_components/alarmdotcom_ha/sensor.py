@@ -8,7 +8,6 @@ from typing import Any
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
-    SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -24,6 +23,7 @@ from pyadc.models.water_meter import WaterMeter
 from pyadc.models.sensor import Sensor
 
 from .const import DATA_BRIDGE, DOMAIN
+from .entity import AdcEntity
 from .hub import AlarmHub
 
 log = logging.getLogger(__name__)
@@ -70,54 +70,10 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class _AdcSensorBase(SensorEntity):
-    """Base for all alarmdotcom_ha sensor entities."""
+class _AdcSensorBase(AdcEntity[AdcDeviceResource], SensorEntity):
+    """Base for alarmdotcom_ha sensor entities backed by AdcEntity."""
 
-    should_poll = False
-    _attr_has_entity_name = True
-
-    def __init__(self, hub: AlarmHub, device: AdcDeviceResource) -> None:
-        self._hub = hub
-        self._device = device
-        self._unsubscribe: Any = None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device.resource_id)},
-            name=device.name,
-            manufacturer="Alarm.com",
-        )
-
-    async def async_added_to_hass(self) -> None:
-        """Subscribe to resource update and connection events."""
-        self._unsubscribe = self._hub.bridge.event_broker.subscribe(
-            [EventBrokerTopic.RESOURCE_UPDATED],
-            self._handle_update,
-            device_id=self._device.resource_id,
-        )
-        self._unsubscribe_connection = self._hub.bridge.event_broker.subscribe(
-            [EventBrokerTopic.CONNECTION_EVENT],
-            self._handle_update,
-        )
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Unsubscribe on removal."""
-        for attr in ("_unsubscribe", "_unsubscribe_connection"):
-            unsub = getattr(self, attr, None)
-            if unsub is not None:
-                unsub()
-                setattr(self, attr, None)
-
-    def _handle_update(self, message: object) -> None:
-        """Handle state update from EventBroker.
-
-        NOTE: EventBroker callbacks run in HA's event loop (WS processor task),
-        so async_write_ha_state() is safe to call directly here.
-        """
-        self.async_write_ha_state()
-
-    @property
-    def available(self) -> bool:
-        """Return False when WebSocket is disconnected or device is disabled."""
-        return self._hub.connected and not self._device.is_disabled
+    pass
 
 
 class AdcBatterySensor(_AdcSensorBase):
@@ -140,11 +96,6 @@ class AdcBatterySensor(_AdcSensorBase):
         if self._device.is_disabled:
             return None
         return self._device.battery_level_pct
-
-    @property
-    def available(self) -> bool:
-        """Unavailable when WebSocket is disconnected or device is disabled."""
-        return self._hub.connected and not self._device.is_disabled
 
 
 class AdcThermostatTemperatureSensor(_AdcSensorBase):
@@ -220,11 +171,12 @@ class AdcThermostatHumiditySensor(_AdcSensorBase):
 # Water Dragon (ADC-SHM-100-A) water meter sensors
 # ---------------------------------------------------------------------------
 
-class _AdcWaterMeterSensorBase(SensorEntity):
-    """Base class for Water Dragon sensor entities.
+class _AdcWaterMeterEntity(SensorEntity):
+    """Base class for water meter sensor entities.
 
-    Water meters are polled (no WS events), so these entities register a
-    periodic refresh via the hub's water meter polling loop.
+    Water meters are polled (no WS events), so these entities subscribe to
+    RESOURCE_UPDATED and refresh the meter reference from the controller on
+    each poll cycle.
     """
 
     should_poll = False
@@ -267,7 +219,7 @@ class _AdcWaterMeterSensorBase(SensorEntity):
         return self._hub.bridge.water_meters.get(self._meter.resource_id) is not None
 
 
-class AdcWaterUsageTodaySensor(_AdcWaterMeterSensorBase):
+class AdcWaterUsageTodaySensor(_AdcWaterMeterEntity):
     """Water usage today for a Water Dragon device."""
 
     _attr_device_class = SensorDeviceClass.WATER
@@ -296,7 +248,7 @@ class AdcWaterUsageTodaySensor(_AdcWaterMeterSensorBase):
         }
 
 
-class AdcWaterDailyAvgSensor(_AdcWaterMeterSensorBase):
+class AdcWaterDailyAvgSensor(_AdcWaterMeterEntity):
     """30-day average daily water usage for a Water Dragon device."""
 
     _attr_state_class = SensorStateClass.MEASUREMENT
