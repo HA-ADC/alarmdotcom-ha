@@ -25,11 +25,16 @@ import time
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+import asyncio
 import aiohttp
 
 from pyadc import AlarmBridge
 from pyadc.events import EventBrokerTopic, ResourceEventMessage
 from pyadc.websocket.client import ConnectionEvent, WebSocketState
+
+from homeassistant.helpers.event import async_track_time_interval
+
+from .const import CONF_SEAMLESS_TOKEN, WATER_METER_DEVICE_TYPE
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -48,8 +53,8 @@ class AlarmHub:
 
     def __init__(
         self,
-        hass,
-        entry,
+        hass: "HomeAssistant",
+        entry: "ConfigEntry",
         username: str,
         password: str,
         mfa_cookie: str = "",
@@ -90,7 +95,6 @@ class AlarmHub:
         await self._bridge.start_websocket()
 
         await self._async_poll_water_meters()
-        from homeassistant.helpers.event import async_track_time_interval
         self._unsub_water_poll = async_track_time_interval(
             self._hass,
             self._async_poll_water_meters,
@@ -101,15 +105,18 @@ class AlarmHub:
         """Refresh water meter data and notify HA entities."""
         try:
             meters = await self._bridge.water_meters.fetch_all()
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            log.warning("Water meter poll failed: %s", err)
+            return
         except Exception:
-            log.exception("alarmdotcom_ha: water meter poll failed")
+            log.exception("Unexpected error during water meter poll")
             return
 
         for meter in meters:
             self._bridge.event_broker.publish(
                 ResourceEventMessage(
                     device_id=meter.resource_id,
-                    device_type="water-meter",
+                    device_type=WATER_METER_DEVICE_TYPE,
                 )
             )
 
@@ -131,7 +138,7 @@ class AlarmHub:
             if elapsed >= DEAD_RELOAD_COOLDOWN_S:
                 self._last_dead_reload_time = now
                 log.warning(
-                    "alarmdotcom_ha: WebSocket entered DEAD state — "
+                    "WebSocket entered DEAD state — "
                     "scheduling config entry reload to re-authenticate."
                 )
                 self._hass.async_create_task(
@@ -140,7 +147,7 @@ class AlarmHub:
             else:
                 remaining = int(DEAD_RELOAD_COOLDOWN_S - elapsed)
                 log.warning(
-                    "alarmdotcom_ha: WebSocket DEAD again but reload cooldown active "
+                    "WebSocket DEAD again but reload cooldown active "
                     "(%ds remaining) — skipping reload, pyadc will keep retrying.",
                     remaining,
                 )
@@ -151,13 +158,11 @@ class AlarmHub:
         Called after every CONNECTED event so a token rotated during a
         mid-session re-auth is saved before the next HA restart.
         """
-        from .const import CONF_SEAMLESS_TOKEN
-
         token = self._bridge.auth.seamless_token
         if token and token != self._entry.data.get(CONF_SEAMLESS_TOKEN, ""):
             updated = {**self._entry.data, CONF_SEAMLESS_TOKEN: token}
             self._hass.config_entries.async_update_entry(self._entry, data=updated)
-            log.debug("alarmdotcom_ha: seamless login token persisted (rotated)")
+            log.debug("Seamless login token persisted (rotated)")
 
     async def _reload_after_shutdown(self) -> None:
         """Tear down the current session, then trigger a config-entry reload.

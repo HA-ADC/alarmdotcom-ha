@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 from urllib.parse import urlparse
@@ -189,7 +190,7 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "cannot_connect"
                 except Exception as exc:
                     await session.close()
-                    log.error("Unexpected error during alarmdotcom_ha setup: %s", exc)
+                    log.error("Unexpected error during setup: %s", exc, exc_info=True)
                     errors["base"] = "unknown"
 
         schema = STEP_USER_SCHEMA
@@ -226,8 +227,11 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 elif method == "email":
                     await bridge.auth.send_otp_email()
                 # app method doesn't need a send — code is already in the app
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                log.warning("Failed to send OTP via %s: %s", method, exc)
+                errors["base"] = "otp_send_failed"
             except Exception as exc:
-                log.error("Failed to send OTP via %s: %s", method, exc)
+                log.error("Unexpected error sending OTP via %s: %s", method, exc, exc_info=True)
                 errors["base"] = "otp_send_failed"
 
             if not errors:
@@ -255,7 +259,7 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except AuthenticationFailed:
                 errors["base"] = "invalid_code"
             except Exception as exc:
-                log.error("Unexpected error during OTP verification: %s", exc)
+                log.error("Unexpected error during OTP verification: %s", exc, exc_info=True)
                 errors["base"] = "unknown"
 
             if not errors:
@@ -279,7 +283,7 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._mfa_cookie = bridge.auth.mfa_cookie
                     log.debug("trust_device step: MFA cookie set")
                 except Exception:
-                    log.warning("Could not trust device; proceeding anyway.")
+                    log.warning("Could not trust device; proceeding anyway.", exc_info=True)
 
             # Done with the OTP bridge — clean up
             if bridge:
@@ -364,7 +368,7 @@ class AlarmDotCom2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except Exception as exc:
                 await session.close()
-                log.error("Unexpected error during alarmdotcom_ha re-auth: %s", exc)
+                log.error("Unexpected error during re-auth: %s", exc, exc_info=True)
                 errors["base"] = "unknown"
 
         return self.async_show_form(

@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfTemperature
+from homeassistant.const import PERCENTAGE, UnitOfTemperature, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -230,7 +230,6 @@ class AdcWaterUsageTodaySensor(_AdcWaterMeterEntity):
     def __init__(self, hub: AlarmHub, meter: WaterMeter) -> None:
         super().__init__(hub, meter)
         self._attr_unique_id = f"{meter.resource_id}_usage_today"
-        from homeassistant.const import UnitOfVolume
         self._attr_native_unit_of_measurement = (
             UnitOfVolume.GALLONS if meter.volume_unit == 0 else UnitOfVolume.LITERS
         )
@@ -259,7 +258,6 @@ class AdcWaterDailyAvgSensor(_AdcWaterMeterEntity):
     def __init__(self, hub: AlarmHub, meter: WaterMeter) -> None:
         super().__init__(hub, meter)
         self._attr_unique_id = f"{meter.resource_id}_daily_avg"
-        from homeassistant.const import UnitOfVolume
         self._attr_native_unit_of_measurement = (
             UnitOfVolume.GALLONS if meter.volume_unit == 0 else UnitOfVolume.LITERS
         )

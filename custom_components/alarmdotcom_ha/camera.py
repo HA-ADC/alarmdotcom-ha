@@ -95,19 +95,7 @@ class AdcCamera(AdcEntity[Camera], HaCamera):
         if not url:
             return None
         try:
-            async with self._hub.bridge.client._session.get(
-                url,
-                headers=self._hub.bridge.client._build_headers(),
-                timeout=15,
-            ) as resp:
-                if resp.status != 200:
-                    log.debug(
-                        "Camera %s snapshot HTTP %s",
-                        self._device.resource_id,
-                        resp.status,
-                    )
-                    return None
-                return await resp.read()
+            return await self._hub.bridge.client.fetch_bytes(url)
         except Exception as exc:
             log.debug("Camera %s snapshot error: %s", self._device.resource_id, exc)
             return None
@@ -201,7 +189,7 @@ class AdcCamera(AdcEntity[Camera], HaCamera):
             except Exception:
                 pass
 
-        http_session = self._hub.bridge.client._session
+        http_session = self._hub.bridge.client.session
         janus = JanusSession(
             source.janus_gateway_url,
             source.janus_token,
