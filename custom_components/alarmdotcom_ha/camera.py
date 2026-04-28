@@ -19,6 +19,7 @@ returned by the ADC relay that contains a JPEG frame.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import TYPE_CHECKING
@@ -301,6 +302,5 @@ class AdcCamera(AdcEntity[Camera], HaCamera):
         self._pending_candidates.pop(session_id, None)
         janus = self._janus_sessions.pop(session_id, None)
         if janus:
-            import asyncio
             asyncio.create_task(janus.close())
 

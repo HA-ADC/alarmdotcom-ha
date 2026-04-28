@@ -49,8 +49,12 @@ class AdcSwitch(AdcEntity[Light], SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
+        self._device.state = LightState.ON
+        self.async_write_ha_state()
         await self._hub.bridge.lights.turn_on(self._device.resource_id)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
+        self._device.state = LightState.OFF
+        self.async_write_ha_state()
         await self._hub.bridge.lights.turn_off(self._device.resource_id)
