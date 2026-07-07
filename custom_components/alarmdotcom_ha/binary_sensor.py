@@ -17,6 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyadc.const import DeviceType
 from pyadc.events import EventBrokerTopic
 from pyadc.models.base import AdcDeviceResource
+from pyadc.models.camera import Camera
 from pyadc.models.sensor import Sensor
 from pyadc.models.water_meter import WaterMeter
 from pyadc.models.water_sensor import WaterSensor
@@ -34,12 +35,12 @@ _DEVICE_CLASS_MAP: dict[DeviceType, BinarySensorDeviceClass] = {
     DeviceType.MOTION: BinarySensorDeviceClass.MOTION,
     DeviceType.IQ_PANEL_MOTION: BinarySensorDeviceClass.MOTION,
     DeviceType.CAMERA: BinarySensorDeviceClass.MOTION,
-    DeviceType.CLIMAX_PIR_CAMERA: BinarySensorDeviceClass.MOTION,
-    DeviceType.DSC_PIR_CAMERA: BinarySensorDeviceClass.MOTION,
-    DeviceType.QOLSYS_PANEL_CAMERA: BinarySensorDeviceClass.MOTION,
-    DeviceType.HONEYWELL_PANEL_CAMERA: BinarySensorDeviceClass.MOTION,
-    DeviceType.POWERG_PIR_CAMERA: BinarySensorDeviceClass.MOTION,
-    DeviceType.GC_NEXT_PANEL_CAMERA: BinarySensorDeviceClass.MOTION,
+    # NOTE: Panel cameras (QOLSYS/HONEYWELL/GC_NEXT_PANEL_CAMERA) and PIR image
+    # cameras (CLIMAX/DSC/POWERG_PIR_CAMERA) are intentionally NOT mapped to
+    # MOTION. They are image-sensor-class devices that emit zero motion events
+    # (confirmed via live WebSocket capture + backend categorization as
+    # ImageSensors), so a motion binary_sensor never worked. They are exposed as
+    # image entities instead (see image.py, _IMAGE_CAMERA_TYPES).
     DeviceType.SOUND: BinarySensorDeviceClass.SOUND,
     DeviceType.GLASSBREAK: BinarySensorDeviceClass.SOUND,
     DeviceType.IQ_PANEL_GLASSBREAK: BinarySensorDeviceClass.SOUND,
@@ -55,8 +56,21 @@ _DEVICE_CLASS_MAP: dict[DeviceType, BinarySensorDeviceClass] = {
     DeviceType.GARAGE_DOOR: BinarySensorDeviceClass.GARAGE_DOOR,
 }
 
-# Temperature sensors are real sensors (not binary) — exclude from binary sensor platform
-_BINARY_SENSOR_EXCLUDED_TYPES = {DeviceType.TEMPERATURE, DeviceType.TEMPERATURE_SENSOR}
+# Device types that must NOT get a main binary_sensor entity:
+#   * Temperature sensors are real (numeric) sensors, handled by the sensor platform.
+#   * Panel cameras / PIR image cameras are image-sensor-class devices with no
+#     motion events; they are exposed as image entities (see image.py). They still
+#     retain their diagnostic malfunction/low-battery binary sensors below.
+_BINARY_SENSOR_EXCLUDED_TYPES = {
+    DeviceType.TEMPERATURE,
+    DeviceType.TEMPERATURE_SENSOR,
+    DeviceType.QOLSYS_PANEL_CAMERA,
+    DeviceType.HONEYWELL_PANEL_CAMERA,
+    DeviceType.GC_NEXT_PANEL_CAMERA,
+    DeviceType.CLIMAX_PIR_CAMERA,
+    DeviceType.DSC_PIR_CAMERA,
+    DeviceType.POWERG_PIR_CAMERA,
+}
 
 
 async def async_setup_entry(
@@ -84,6 +98,14 @@ async def async_setup_entry(
         if meter.requires_calibration_setup:
             entities.append(AdcWaterCalibrationSensor(hub, meter))
 
+    # Per-camera object-detection sensors (person / vehicle / animal).
+    # Real cameras emit video-analytics events that the camera controller
+    # decodes into momentary detection flags on the Camera model.
+    for camera in hub.bridge.cameras.devices:
+        entities.append(AdcCameraPersonSensor(hub, camera))
+        entities.append(AdcCameraVehicleSensor(hub, camera))
+        entities.append(AdcCameraAnimalSensor(hub, camera))
+
     # Diagnostic entities for every device type
     all_devices: list[AdcDeviceResource] = [
         *hub.bridge.sensors.devices,
@@ -108,13 +130,80 @@ class AdcBinarySensor(AdcEntity[Sensor], BinarySensorEntity):
 
     @property
     def device_class(self) -> BinarySensorDeviceClass | None:
-        """Return device class based on the ADC device type."""
+        """Return device class based on the ADC device type.
+
+        Alarm.com's customer API models door and window contacts as the same
+        physical "door/window contact" device type, so it carries no reliable
+        door-vs-window flag — contacts therefore default to ``door``. To have a
+        window contact classified as a window, override it per-entity in Home
+        Assistant via the entity's Settings → "Show as" selector; that choice is
+        stored in the entity registry and takes precedence over this default.
+        See GitHub issue #1 and the README.
+        """
         return _DEVICE_CLASS_MAP.get(self._device.device_type)
 
     @property
     def is_on(self) -> bool:
         """Return True when the sensor is in an active/triggered state."""
         return self._device.is_open
+
+
+class _AdcCameraDetectionSensor(AdcEntity[Camera], BinarySensorEntity):
+    """Base for a camera's momentary object-detection binary sensor.
+
+    Cameras support person / vehicle / animal detection. Each is exposed as a
+    separate momentary binary sensor: the pyadc camera controller sets the
+    matching model flag True on a video-analytics event and auto-clears it after
+    ~30s. We use device_class MOTION for all three because these are momentary
+    "an object was seen moving" pulses (auto-cleared like motion) rather than a
+    sustained presence — MOTION renders as Detected/Clear, which fits. (OCCUPANCY
+    was considered for person but implies sustained presence, so it was not used.)
+    Distinct icons differentiate the three.
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.MOTION
+    _attr_has_entity_name = True
+
+    # Subclasses set these.
+    _detection_attr: str = ""
+    _detection_suffix: str = ""
+
+    def __init__(self, hub: AlarmHub, camera: Camera) -> None:
+        super().__init__(hub, camera)
+        self._attr_unique_id = f"{camera.resource_id}_{self._detection_suffix}"
+        # AdcEntity.__init__ sets self._attr_name = None (device-name only), so set
+        # a distinct sub-name per detector — "<Camera> Person/Vehicle/Animal".
+        # Derive it from the plain _detection_suffix string (NOT the class-level
+        # _attr_name, which HA turns into a descriptor).
+        self._attr_name = self._detection_suffix.capitalize()
+
+    @property
+    def is_on(self) -> bool:
+        return bool(getattr(self._device, self._detection_attr, False))
+
+
+class AdcCameraPersonSensor(_AdcCameraDetectionSensor):
+    """Momentary binary sensor: True when the camera detects a person."""
+
+    _attr_icon = "mdi:walk"
+    _detection_attr = "person_detected"
+    _detection_suffix = "person"
+
+
+class AdcCameraVehicleSensor(_AdcCameraDetectionSensor):
+    """Momentary binary sensor: True when the camera detects a vehicle."""
+
+    _attr_icon = "mdi:car"
+    _detection_attr = "vehicle_detected"
+    _detection_suffix = "vehicle"
+
+
+class AdcCameraAnimalSensor(_AdcCameraDetectionSensor):
+    """Momentary binary sensor: True when the camera detects an animal."""
+
+    _attr_icon = "mdi:paw"
+    _detection_attr = "animal_detected"
+    _detection_suffix = "animal"
 
 
 class AdcMalfunctionSensor(AdcEntity[AdcDeviceResource], BinarySensorEntity):

@@ -148,8 +148,9 @@ class AdcClimate(AdcEntity[Thermostat], ClimateEntity):
             | ClimateEntityFeature.FAN_MODE
             | ClimateEntityFeature.PRESET_MODE
         )
-        if thermostat.supports_humidity_control:
-            features |= ClimateEntityFeature.TARGET_HUMIDITY
+        # NOTE: TARGET_HUMIDITY is intentionally NOT advertised — Alarm.com has no
+        # humidity-control API, so a target-humidity control would silently no-op.
+        # ``current_humidity`` is still exposed read-only below.
         self._attr_supported_features = features
 
         self._attr_fan_modes = list(_FAN_MODE_MAP.values())
@@ -270,13 +271,6 @@ class AdcClimate(AdcEntity[Thermostat], ClimateEntity):
             self._device.resource_id,
             fan_mode=adc_fan_mode,
         )
-
-    async def async_set_humidity(self, humidity: float) -> None:
-        """Set target humidity."""
-        await self._hub.bridge.thermostats.set_state(
-            self._device.resource_id,
-        )
-        log.debug("Target humidity %s set (no direct ADC API — stored locally)", humidity)
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set preset mode."""

@@ -46,6 +46,20 @@ WATER_METER_POLL_INTERVAL = timedelta(hours=1)
 # Minimum seconds between config-entry reloads triggered by the DEAD state.
 # Prevents a cascade of full re-auth attempts when the backend is degraded.
 DEAD_RELOAD_COOLDOWN_S: float = 300.0
+# Safety-net reconcile for the rare case of a WebSocket that stays *transport*-
+# alive but silently stops delivering events. Real dead connections are already
+# caught with zero polling by aiohttp's 60s heartbeat → reconnect → resync, so
+# this backstop is deliberately infrequent and staleness-gated:
+#   * the timer only fires every RECONCILE_INTERVAL, and
+#   * it issues a REST refresh only when the socket has been silent for
+#     STALE_AFTER (an active connection polls zero times).
+# Net: healthy connections (which reconnect every few minutes) make no
+# background REST calls at all; only a genuinely stuck socket — no frames and no
+# reconnects for STALE_AFTER — is reconciled. The check itself is a free
+# in-memory timestamp comparison, so it can run often without polling ADC.
+# See GitHub issue #2 ("Connection to hub hangs").
+RECONCILE_INTERVAL = timedelta(minutes=15)
+STALE_AFTER = timedelta(minutes=30)
 
 
 class AlarmHub:
@@ -74,6 +88,7 @@ class AlarmHub:
         )
         self._unsub_connection = None
         self._unsub_water_poll = None
+        self._unsub_reconcile = None
         self._ws_connected: bool = False
         self._last_dead_reload_time: float = 0.0
 
@@ -100,6 +115,36 @@ class AlarmHub:
             self._async_poll_water_meters,
             WATER_METER_POLL_INTERVAL,
         )
+        self._unsub_reconcile = async_track_time_interval(
+            self._hass,
+            self._async_reconcile,
+            RECONCILE_INTERVAL,
+        )
+
+    async def _async_reconcile(self, _now=None) -> None:
+        """Re-fetch all device state from REST as a drift/stall safety net.
+
+        Skips the REST call entirely unless the WebSocket looks genuinely stuck:
+        connected but with no inbound frame — including reconnects — for
+        ``STALE_AFTER``. Because a reconnect refreshes the "last message" time
+        and the socket reconnects every few minutes, a healthy connection (even
+        an idle, quiet one) never polls here. ``refresh_all()`` reconciles models
+        in place and publishes updates only for devices whose state changed, so
+        even when it does run there is no entity churn.
+        """
+        silent_for = self._bridge.websocket.seconds_since_last_message
+        if (
+            self._ws_connected
+            and silent_for is not None
+            and silent_for < STALE_AFTER.total_seconds()
+        ):
+            return  # healthy connection — no need to poll
+        try:
+            await self._bridge.refresh_all()
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            log.debug("Reconcile failed (will retry next interval): %s", err)
+        except Exception:
+            log.exception("Unexpected error during reconcile")
 
     async def _async_poll_water_meters(self, _now=None) -> None:
         """Refresh water meter data and notify HA entities."""
@@ -126,6 +171,13 @@ class AlarmHub:
             # Token may have rotated during a mid-session re-auth — persist it
             # so the next restart can use the seamless path instead of full login.
             self._hass.async_create_task(self._async_persist_seamless_token())
+            # NOTE: we deliberately do NOT refresh_all() on every reconnect. The
+            # WebSocket cycles (fresh JWT) every ~5 minutes by design, so doing
+            # so would mean a full REST poll every few minutes. A reconnect also
+            # refreshes the WS "last message" timestamp, which keeps the
+            # staleness-gated backstop (below) from ever firing on a healthy —
+            # even if quiet — connection. Genuinely stuck sockets (no messages
+            # AND no reconnects) still get caught by that backstop.
         elif message.current_state in (
             WebSocketState.DEAD,
             WebSocketState.DISCONNECTED,
@@ -179,6 +231,9 @@ class AlarmHub:
         if self._unsub_water_poll is not None:
             self._unsub_water_poll()
             self._unsub_water_poll = None
+        if self._unsub_reconcile is not None:
+            self._unsub_reconcile()
+            self._unsub_reconcile = None
         if self._unsub_connection is not None:
             self._unsub_connection()
             self._unsub_connection = None

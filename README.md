@@ -115,6 +115,25 @@ The `mfa_cookie` is stored securely in the HA config entry and reused on restart
 
 ---
 
+## Tips
+
+### Door vs. window contacts
+
+Alarm.com's API models door and window contacts as the same physical
+"door/window contact" device type and does **not** report which is which, so
+every contact sensor defaults to the **door** device class. If you want a
+contact treated as a **window** (for example so Home Assistant's purpose-based
+triggers and sorting group it correctly):
+
+1. Open the sensor entity → **Settings** (gear icon).
+2. Use the **"Show as"** selector and choose **Window** (or any class you prefer).
+
+Home Assistant stores this override in the entity registry and it takes
+precedence over the integration's default — no configuration in the integration
+is required, and the choice survives restarts.
+
+---
+
 ## Architecture
 
 ```

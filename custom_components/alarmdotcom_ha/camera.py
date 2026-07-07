@@ -36,7 +36,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from webrtc_models import RTCConfiguration, RTCIceCandidateInit, RTCIceServer
 
-from pyadc.janus import JanusError, JanusSession
+from pyadc.janus import HAS_AIORTC, JanusError, JanusSession
 from pyadc.models.camera import Camera
 
 from .const import DATA_BRIDGE, DOMAIN
@@ -157,6 +157,25 @@ class AdcCamera(AdcEntity[Camera], HaCamera):
             self._device.resource_id,
             session_id,
         )
+
+        # Live WebRTC streaming needs the optional aiortc extra, which conflicts
+        # with HA core's av>=17. When it's absent this is an expected degradation
+        # (snapshots still work), not a fault — surface it to the frontend and
+        # log at WARNING rather than letting a Janus attempt raise an ERROR on
+        # every stream request.
+        if not HAS_AIORTC:
+            log.warning(
+                "Camera %s: live WebRTC streaming unavailable (aiortc not "
+                "installed); snapshots still work.",
+                self._device.resource_id,
+            )
+            send_message(
+                WebRTCError(
+                    "streaming_unavailable",
+                    "Live streaming is unavailable (aiortc not installed).",
+                )
+            )
+            return
 
         # Initialize pre-queue IMMEDIATELY (before any await) so that trickle
         # candidates arriving during the async source-fetch gap are buffered.
