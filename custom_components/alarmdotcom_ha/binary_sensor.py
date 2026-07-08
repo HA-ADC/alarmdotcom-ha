@@ -98,13 +98,14 @@ async def async_setup_entry(
         if meter.requires_calibration_setup:
             entities.append(AdcWaterCalibrationSensor(hub, meter))
 
-    # Per-camera object-detection sensors (person / vehicle / animal).
+    # Per-camera object-detection sensors (person / vehicle / animal / package).
     # Real cameras emit video-analytics events that the camera controller
     # decodes into momentary detection flags on the Camera model.
     for camera in hub.bridge.cameras.devices:
         entities.append(AdcCameraPersonSensor(hub, camera))
         entities.append(AdcCameraVehicleSensor(hub, camera))
         entities.append(AdcCameraAnimalSensor(hub, camera))
+        entities.append(AdcCameraPackageSensor(hub, camera))
 
     # Diagnostic entities for every device type
     all_devices: list[AdcDeviceResource] = [
@@ -151,8 +152,8 @@ class AdcBinarySensor(AdcEntity[Sensor], BinarySensorEntity):
 class _AdcCameraDetectionSensor(AdcEntity[Camera], BinarySensorEntity):
     """Base for a camera's momentary object-detection binary sensor.
 
-    Cameras support person / vehicle / animal detection. Each is exposed as a
-    separate momentary binary sensor: the pyadc camera controller sets the
+    Cameras support person / vehicle / animal / package detection. Each is
+    exposed as a separate momentary binary sensor: the pyadc camera controller sets the
     matching model flag True on a video-analytics event and auto-clears it after
     ~30s. We use device_class MOTION for all three because these are momentary
     "an object was seen moving" pulses (auto-cleared like motion) rather than a
@@ -204,6 +205,14 @@ class AdcCameraAnimalSensor(_AdcCameraDetectionSensor):
     _attr_icon = "mdi:paw"
     _detection_attr = "animal_detected"
     _detection_suffix = "animal"
+
+
+class AdcCameraPackageSensor(_AdcCameraDetectionSensor):
+    """Momentary binary sensor: True when the camera detects a package/parcel."""
+
+    _attr_icon = "mdi:package-variant-closed"
+    _detection_attr = "package_detected"
+    _detection_suffix = "package"
 
 
 class AdcMalfunctionSensor(AdcEntity[AdcDeviceResource], BinarySensorEntity):
