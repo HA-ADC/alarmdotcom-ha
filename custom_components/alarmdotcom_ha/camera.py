@@ -83,23 +83,53 @@ class AdcCamera(AdcEntity[Camera], HaCamera):
         # Created at the start of async_handle_async_webrtc_offer so candidates
         # arriving during async gaps (e.g. source fetch) are not dropped.
         self._pending_candidates: dict[str, list[tuple]] = {}
+        # Which relay endpoint actually delivers video for this camera, learned
+        # empirically: some ADC cameras only stream via the HD relay, others
+        # only via the SD relay.  None = not yet known (start with HD).
+        self._pref_hd: bool | None = None
+        # Keep strong refs to per-session verify/fallback tasks.
+        self._verify_tasks: dict[str, asyncio.Task] = {}
+        # Snapshot cache: dashboards poll camera_proxy every ~10 s, and every
+        # uncached call makes the physical camera capture a fresh JPEG.  That
+        # load is heavy enough to drop the camera's RTSP stream ("Device
+        # Connection Dropped"), so snapshots are throttled here and never
+        # fetched while a live WebRTC session is running.
+        self._snapshot_cache: bytes | None = None
+        self._snapshot_ts: float = 0.0
 
     # ------------------------------------------------------------------ #
     # Still image
     # ------------------------------------------------------------------ #
 
+    _SNAPSHOT_CACHE_TTL_S = 45.0
+
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Return a JPEG snapshot fetched from the ADC relay."""
+        """Return a JPEG snapshot fetched from the ADC relay.
+
+        Snapshots are cached for ``_SNAPSHOT_CACHE_TTL_S`` and served stale
+        while a live WebRTC session is active — each uncached call makes the
+        camera capture a new JPEG, which can drop its live RTSP stream.
+        """
+        now = asyncio.get_running_loop().time()
+        if self._snapshot_cache is not None and (
+            self._janus_sessions or now - self._snapshot_ts < self._SNAPSHOT_CACHE_TTL_S
+        ):
+            return self._snapshot_cache
+
         url = await self._hub.bridge.cameras.get_snapshot_url(self._device)
         if not url:
-            return None
+            return self._snapshot_cache
         try:
-            return await self._hub.bridge.client.fetch_bytes(url)
+            image = await self._hub.bridge.client.fetch_bytes(url)
         except Exception as exc:
             log.debug("Camera %s snapshot error: %s", self._device.resource_id, exc)
-            return None
+            return self._snapshot_cache
+        if image:
+            self._snapshot_cache = image
+            self._snapshot_ts = now
+        return image or self._snapshot_cache
 
     async def stream_source(self) -> str | None:
         """Not used — live video is handled via WebRTC."""
@@ -181,8 +211,14 @@ class AdcCamera(AdcEntity[Camera], HaCamera):
         # candidates arriving during the async source-fetch gap are buffered.
         self._pending_candidates[session_id] = []
 
-        # Fetch fresh liveVideoSource (Janus token expires after ~1 hour)
-        source = await self._hub.bridge.cameras.get_live_video_source(self._device)
+        # Fetch fresh liveVideoSource (Janus token expires after ~1 hour).
+        # Endpoint choice (HD vs SD relay) is per-camera: start from the
+        # learned preference, defaulting to HD.  The verify task below falls
+        # back to the other endpoint if this one never delivers video.
+        use_hd = self._pref_hd if self._pref_hd is not None else True
+        source = await self._hub.bridge.cameras.get_live_video_source(
+            self._device, hd=use_hd
+        )
         if not source or not source.janus_gateway_url or not source.janus_token:
             log.warning(
                 "Camera %s: no Janus credentials available", self._device.resource_id
@@ -215,6 +251,12 @@ class AdcCamera(AdcEntity[Camera], HaCamera):
             source.janus_token,
             source.proxy_url,
             ice_servers,
+            # HD relays are continuously-running streams a viewer joins
+            # mid-GOP, so SPS/PPS injection is always needed; SD relays start
+            # fresh per viewer, where the API's spsAndPpsRequired is accurate
+            # (forcing injection on can stall the SD ingest entirely).
+            add_sps_pps=True if use_hd else source.sps_and_pps_required,
+            name=self._device.mac_address,
         )
 
         # Register a stopped callback so Janus can tear down the session
@@ -277,6 +319,74 @@ class AdcCamera(AdcEntity[Camera], HaCamera):
             session_id,
         )
 
+        # Watch for video actually arriving; switch relay endpoint if not.
+        task = asyncio.create_task(
+            self._verify_stream(session_id, janus, use_hd),
+            name=f"adc-verify-stream-{session_id}",
+        )
+        self._verify_tasks[session_id] = task
+        task.add_done_callback(lambda _: self._verify_tasks.pop(session_id, None))
+
+    _FIRST_FRAME_TIMEOUT_S = 10.0
+
+    async def _verify_stream(
+        self, session_id: str, janus: JanusSession, used_hd: bool
+    ) -> None:
+        """Fall back to the other ADC relay endpoint if no video arrives.
+
+        Some cameras only deliver decodable video on the HD relay, others only
+        on the SD relay (see async_handle_async_webrtc_offer).  If the first
+        endpoint produces no decoded frame within the timeout, swap the Janus
+        side to the other endpoint — the browser connection stays up, so the
+        viewer just sees the stream start a few seconds later.  Whichever
+        endpoint works is remembered for future sessions of this camera.
+        """
+        if await janus.wait_first_frame(self._FIRST_FRAME_TIMEOUT_S):
+            self._pref_hd = used_hd
+            return
+        if session_id not in self._janus_sessions:
+            return  # session already torn down
+        other_hd = not used_hd
+        log.warning(
+            "Camera %s: no video from %s relay within %.0fs — switching to %s",
+            self._device.resource_id,
+            "HD" if used_hd else "SD",
+            self._FIRST_FRAME_TIMEOUT_S,
+            "HD" if other_hd else "SD",
+        )
+        try:
+            source = await self._hub.bridge.cameras.get_live_video_source(
+                self._device, hd=other_hd
+            )
+            if not source or not source.proxy_url:
+                log.warning(
+                    "Camera %s: fallback source unavailable", self._device.resource_id
+                )
+                return
+            await janus.switch_source(
+                source.proxy_url,
+                gateway_url=source.janus_gateway_url,
+                token=source.janus_token,
+                add_sps_pps=True if other_hd else source.sps_and_pps_required,
+            )
+        except Exception as exc:
+            log.warning(
+                "Camera %s: stream fallback failed: %s", self._device.resource_id, exc
+            )
+            return
+        if await janus.wait_first_frame(self._FIRST_FRAME_TIMEOUT_S + 5):
+            self._pref_hd = other_hd
+            log.info(
+                "Camera %s: video flowing via %s relay",
+                self._device.resource_id,
+                "HD" if other_hd else "SD",
+            )
+        else:
+            log.warning(
+                "Camera %s: no video from either relay endpoint",
+                self._device.resource_id,
+            )
+
     async def async_on_webrtc_candidate(
         self, session_id: str, candidate: RTCIceCandidateInit
     ) -> None:
@@ -319,6 +429,9 @@ class AdcCamera(AdcEntity[Camera], HaCamera):
     def close_webrtc_session(self, session_id: str) -> None:
         """Close the Janus WebSocket session when the browser disconnects."""
         self._pending_candidates.pop(session_id, None)
+        task = self._verify_tasks.pop(session_id, None)
+        if task:
+            task.cancel()
         janus = self._janus_sessions.pop(session_id, None)
         if janus:
             asyncio.create_task(janus.close())
