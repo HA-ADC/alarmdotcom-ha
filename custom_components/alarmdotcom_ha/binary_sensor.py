@@ -155,7 +155,7 @@ class _AdcCameraDetectionSensor(AdcEntity[Camera], BinarySensorEntity):
     Cameras support person / vehicle / animal / package detection. Each is
     exposed as a separate momentary binary sensor: the pyadc camera controller sets the
     matching model flag True on a video-analytics event and auto-clears it after
-    ~30s. We use device_class MOTION for all three because these are momentary
+    a short delay. We use device_class MOTION for all three because these are momentary
     "an object was seen moving" pulses (auto-cleared like motion) rather than a
     sustained presence — MOTION renders as Detected/Clear, which fits. (OCCUPANCY
     was considered for person but implies sustained presence, so it was not used.)

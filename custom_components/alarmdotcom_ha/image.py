@@ -47,6 +47,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up image sensor entities."""
     hub: AlarmHub = hass.data[DOMAIN][entry.entry_id][DATA_BRIDGE]
+    # Prime the recent-images cache so panel-camera image entities render the
+    # latest capture immediately after startup instead of showing "unknown"
+    # until the first SCAN_INTERVAL poll.
+    await hub.bridge.image_sensors.fetch_recent_images()
     entities: list[ImageEntity] = [
         AdcImageSensor(hass, hub, sensor)
         for sensor in hub.bridge.image_sensors.devices

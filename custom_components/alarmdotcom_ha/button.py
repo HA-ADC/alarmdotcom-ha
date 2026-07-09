@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from homeassistant.components.button import ButtonEntity
@@ -11,13 +12,22 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from pyadc.const import DeviceType
+from pyadc.events import ResourceEventMessage
 from pyadc.models.base import AdcDeviceResource
+from pyadc.models.image_sensor import ImageSensor
 
 from .const import DATA_BRIDGE, DOMAIN
 from .entity import AdcEntity
 from .hub import AlarmHub
 
 log = logging.getLogger(__name__)
+
+# After a peek-in request, poll for the uploaded frame so the image entity
+# refreshes as soon as it lands (observed ~4 s on panel cameras; battery PIR
+# cams can take longer) instead of waiting for the image platform's 30-minute
+# SCAN_INTERVAL poll.
+_PEEK_IN_POLL_INTERVAL_S = 5
+_PEEK_IN_POLL_ATTEMPTS = 12  # give up after ~60 s
 
 # Panel / PIR image cameras support on-demand "peek-in" captures. They arrive in
 # pyadc through the sensors endpoint (as Sensor models), so peek-in buttons must
@@ -127,7 +137,60 @@ class AdcPeekInButton(AdcEntity[AdcDeviceResource], ButtonEntity):
         super().__init__(hub, device)
         self._attr_unique_id = f"{device.resource_id}_peek_in"
         self._attr_name = "Peek In"
+        self._refresh_task: asyncio.Task | None = None
 
     async def async_press(self) -> None:
-        """Request a fresh peek-in capture now."""
+        """Request a fresh peek-in capture and refresh the image when it lands."""
         await self._hub.bridge.image_sensors.peek_in_now(self._device.resource_id)
+        if self._refresh_task is not None and not self._refresh_task.done():
+            self._refresh_task.cancel()
+        self._refresh_task = self.hass.async_create_task(
+            self._refresh_when_image_lands()
+        )
+
+    def _latest_capture(self) -> tuple[object, object]:
+        """Return the (timestamp, url) of the device's newest known capture.
+
+        Standalone image sensors carry these on the model itself; panel / PIR
+        image cameras (Sensor models) read them from the controller's
+        recent-images cache, keyed by the numeric short id.
+        """
+        if isinstance(self._device, ImageSensor):
+            return (self._device.last_update, self._device.last_image_url)
+        ctrl = self._hub.bridge.image_sensors
+        short_id = self._device.resource_id.rsplit("-", 1)[-1]
+        return (
+            ctrl.latest_image_timestamp(short_id),
+            ctrl.latest_image_url(short_id),
+        )
+
+    async def _refresh_when_image_lands(self) -> None:
+        """Poll until the peek-in frame uploads, then nudge the image entity."""
+        ctrl = self._hub.bridge.image_sensors
+        baseline = self._latest_capture()
+        for _ in range(_PEEK_IN_POLL_ATTEMPTS):
+            await asyncio.sleep(_PEEK_IN_POLL_INTERVAL_S)
+            try:
+                if isinstance(self._device, ImageSensor):
+                    await ctrl.fetch_all()
+                else:
+                    await ctrl.fetch_recent_images()
+            except Exception as exc:  # noqa: BLE001 — keep polling through blips
+                log.debug(
+                    "Peek-in refresh poll failed for %s: %s",
+                    self._device.resource_id, exc,
+                )
+                continue
+            if self._latest_capture() != baseline:
+                self._hub.bridge.event_broker.publish(
+                    ResourceEventMessage(
+                        device_id=self._device.resource_id,
+                        device_type=self._device.resource_type,
+                    )
+                )
+                return
+        log.debug(
+            "Peek-in image for %s did not arrive within %s s",
+            self._device.resource_id,
+            _PEEK_IN_POLL_INTERVAL_S * _PEEK_IN_POLL_ATTEMPTS,
+        )

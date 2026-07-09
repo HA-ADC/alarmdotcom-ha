@@ -19,8 +19,10 @@ Where possible, use local control for smart home devices that are natively suppo
 - Config flow with username/password, OTP/2FA, and device trust
 - Utilizing official api endpoints and websocket messages to help ensure reliability
 - Large amount of device support
+- Camera support — still snapshots, WebRTC live streaming, and per-camera person / vehicle / animal / package detection sensors
 - Optimistic state updates — UI reflects changes instantly before server confirmation
 - Seamless token rotation — persisted across restarts for fast re-authentication
+- Custom arming services (`arm_away_options`, `arm_stay_options`, `arm_night_options`) with silent arming, force bypass, and no-entry-delay options
 
 ## Supported Devices
 
@@ -33,6 +35,8 @@ Below is a table of the currently supported device types. Under the communiy tes
 | Device | Community Tested | HA Platform | Transport | Notes |
 |--------|------------------|-------------|-----------|-------|
 | Battery levels | ✅ <br/> Yale Assure Lock | `sensor` (%) | WebSocket | Per-device diagnostic |
+| Camera object detection (person / vehicle / animal / package) | ✅ <br/> | `binary_sensor` (MOTION) | WebSocket | Four momentary sensors per camera; auto-clear ~10s after the last detection event. Requires video analytics on the camera/plan. |
+| Cameras | ✅ <br/> | `camera` | REST + WebRTC | Still snapshots always work. Live view streams via ADC's Janus gateway and needs the optional `aiortc` package (`pyadc[webrtc]`); without it the entity is snapshot-only. |
 | CO detectors | 🟧 <br/> | `binary_sensor` (CO) | WebSocket | |
 | Color-temp lights | ✅ <br/> Zipato RGBW Bulb | `light` | WebSocket | Warm/cool white |
 | Contact sensors (door/window) | ✅ <br/> QS1135-840 | `binary_sensor` (DOOR) | WebSocket | |
@@ -41,13 +45,14 @@ Below is a table of the currently supported device types. Under the communiy tes
 | Gas sensors | 🟧 <br/> | `binary_sensor` (GAS) | WebSocket | This is I assume a propane sensor |
 | Gates | 🟧 <br/> | `cover` (GATE) | WebSocket | |
 | Glassbreak sensors | ✅ <br/> States are reporting on IQ4. Have not been able to trigger a glass break sound to test that state. | `binary_sensor` (SOUND) | WebSocket | |
-| Image sensors | 🟧 <br/> | `image` | Poll (30 min) | |
+| Image sensors | 🟧 <br/> | `image` + `button` | Poll (30 min) | "Peek In" button requests an on-demand capture; the image refreshes within seconds of the upload. |
 | Lights (on/off, dimmable) | ✅ <br/> Zipato RGBW Bulb | `light` | WebSocket | These would be physical light bulbs. |
 | Locks | ✅ <br/> Yale Assure series locks | `lock` | WebSocket | |
 | Low battery state | ✅ | `binary_sensor` (BATTERY) | WebSocket | Per-device diagnostic |
 | Malfunction state | ✅ | `binary_sensor` (PROBLEM) | WebSocket | Per-device diagnostic |
 | Motion sensors | ✅ <br/> No tested physical devices, but states are reporting | `binary_sensor` (MOTION) | WebSocket | |
 | On/off switches | ✅ <br/> Jasco 46562 | `switch` | WebSocket | I believe outlet switches would be under this category too |
+| Panel / PIR image cameras | ✅ <br/> IQ4 panel camera | `image` + `button` | Poll (30 min) | Latest capture shown at startup; "Peek In" button takes a fresh capture and the image refreshes within seconds. Covers Qolsys/Honeywell/GC-Next panel cameras and Climax/DSC/PowerG PIR cameras. |
 | RGB lights | ✅ <br/> Zipato RGBW Bulb | `light` | WebSocket | Full RGB color control |
 | Security Panel | ✅ <br/> IQ4 | `alarm_control_panel` | WebSocket | Arm/Away/Stay/Night/Disarm |
 | Smoke/heat detectors | 🟧 <br/> | `binary_sensor` (SMOKE) | WebSocket | |
@@ -92,8 +97,9 @@ Add this repository as a custom HACS integration source, then install `alarmdotc
 
 ## Requirements
 
-- Home Assistant 2024.1+
-- `pyadc>=0.1.0` — automatically installed by HA from `manifest.json`
+- Home Assistant 2024.11+ (the camera platform uses HA's async WebRTC provider API)
+- `pyadc` — pinned by git tag in `manifest.json` and installed by HA automatically
+- Optional: `aiortc` (`pip install "pyadc[webrtc]"` into HA's venv) for live camera streaming — see the Cameras row above
 
 ---
 
@@ -145,16 +151,18 @@ alarmdotcom_ha/
     ├── config_flow.py        # ConfigFlow: user → two_factor → trust_device → reauth
     ├── const.py              # DOMAIN, config key constants, WATER_METER_DEVICE_TYPE
     ├── manifest.json         # HA integration metadata (domain, requirements, iot_class)
+    ├── services.yaml         # arm_away/stay/night_options custom services
     ├── strings.json          # Config flow UI string keys
     ├── translations/en.json  # English UI strings
     ├── alarm_control_panel.py
-    ├── binary_sensor.py
+    ├── binary_sensor.py      # Sensors + per-camera person/vehicle/animal/package detection
+    ├── camera.py             # Snapshots + WebRTC live view via ADC Janus gateway
     ├── climate.py            # Full feature set: FAN_ONLY, humidity, presets, hvac_action
     ├── cover.py              # GarageDoor (GARAGE) + Gate (GATE device class)
-    ├── image.py              # Image sensors — polls every 30 min for image URL
+    ├── image.py              # Image sensors + panel/PIR cameras — 30 min poll, primed at startup
     ├── light.py              # on/off, dimming, RGB, color temp
     ├── lock.py
-    ├── button.py             # Camera peek-in-now button
+    ├── button.py             # Image-sensor peek-in, debug, and clear-faults buttons
     ├── switch.py             # On/off light switches (DeviceType 17)
     ├── sensor.py             # Battery %, temperature sensors, thermostat temp/humidity, water usage
     └── valve.py
@@ -232,8 +240,8 @@ _handle_connection_event(DEAD)         → hub.connected = False → schedule co
 ## Development Setup
 
 ```bash
-# From repo root
-cd HA_pyADC/pyadc
+# From the workspace root
+cd pyadc
 pip install -e ".[dev]"   # installs pyadc in editable mode
 
 # To test the HA integration manually:
@@ -278,14 +286,10 @@ On a real HA instance (with internet access), reload or reinstall the integratio
 
 ### Dev environment note
 
-The devcontainer has **no internet access** — HA cannot fetch from the git URL. For local dev:
-1. Keep `manifest.json` as `"pyadc"` (no URL) in the container only
-2. Copy pyadc source directly into the container's venv:
+The devcontainer has **no internet access** — HA cannot fetch from the git URL. For local dev, run `deploy.sh` from the workspace root — it finds the running HA devcontainer, syncs both the pyadc source and this custom component into it, and restarts HA:
 
 ```bash
-docker cp pyadc/. hungry_fermat:/tmp/pyadc/
-docker exec hungry_fermat bash -c \
-  "cp -r /tmp/pyadc/pyadc/* /home/vscode/.local/ha-venv/lib/python3.14/site-packages/pyadc/"
+./deploy.sh
 ```
 
 The committed `manifest.json` always keeps the real git URL — only patch it locally.

@@ -47,16 +47,20 @@ WATER_METER_POLL_INTERVAL = timedelta(hours=1)
 # Prevents a cascade of full re-auth attempts when the backend is degraded.
 DEAD_RELOAD_COOLDOWN_S: float = 300.0
 # Safety-net reconcile for the rare case of a WebSocket that stays *transport*-
-# alive but silently stops delivering events. Real dead connections are already
-# caught with zero polling by aiohttp's 60s heartbeat → reconnect → resync, so
-# this backstop is deliberately infrequent and staleness-gated:
+# alive but silently stops delivering events. pyadc already provides full
+# event coverage without polling:
+#   * seamless token rotation (make-before-break socket handover every ~4 min)
+#     means the connection never drops at JWT expiry, and
+#   * if the socket ever does die before a replacement is up, pyadc publishes
+#     RECONNECTED after recovery and the AlarmBridge runs a one-shot REST
+#     resync for the gap.
+# This backstop therefore only matters for a socket that looks healthy but
+# silently delivers nothing. It is deliberately infrequent and staleness-gated:
 #   * the timer only fires every RECONCILE_INTERVAL, and
 #   * it issues a REST refresh only when the socket has been silent for
-#     STALE_AFTER (an active connection polls zero times).
-# Net: healthy connections (which reconnect every few minutes) make no
-# background REST calls at all; only a genuinely stuck socket — no frames and no
-# reconnects for STALE_AFTER — is reconciled. The check itself is a free
-# in-memory timestamp comparison, so it can run often without polling ADC.
+#     STALE_AFTER (an active connection polls zero times). Each successful
+#     token rotation refreshes pyadc's last-message timestamp, so a healthy
+#     but quiet connection never trips it.
 # See GitHub issue #2 ("Connection to hub hangs").
 RECONCILE_INTERVAL = timedelta(minutes=15)
 STALE_AFTER = timedelta(minutes=30)
@@ -125,12 +129,12 @@ class AlarmHub:
         """Re-fetch all device state from REST as a drift/stall safety net.
 
         Skips the REST call entirely unless the WebSocket looks genuinely stuck:
-        connected but with no inbound frame — including reconnects — for
-        ``STALE_AFTER``. Because a reconnect refreshes the "last message" time
-        and the socket reconnects every few minutes, a healthy connection (even
-        an idle, quiet one) never polls here. ``refresh_all()`` reconciles models
-        in place and publishes updates only for devices whose state changed, so
-        even when it does run there is no entity churn.
+        connected but with no inbound frame — and no successful token rotation —
+        for ``STALE_AFTER``. pyadc rotates the socket every ~4 minutes and each
+        rotation refreshes the "last message" time, so a healthy connection
+        (even an idle, quiet one) never polls here. ``refresh_all()`` reconciles
+        models in place and publishes updates only for devices whose state
+        changed, so even when it does run there is no entity churn.
         """
         silent_for = self._bridge.websocket.seconds_since_last_message
         if (
@@ -171,13 +175,11 @@ class AlarmHub:
             # Token may have rotated during a mid-session re-auth — persist it
             # so the next restart can use the seamless path instead of full login.
             self._hass.async_create_task(self._async_persist_seamless_token())
-            # NOTE: we deliberately do NOT refresh_all() on every reconnect. The
-            # WebSocket cycles (fresh JWT) every ~5 minutes by design, so doing
-            # so would mean a full REST poll every few minutes. A reconnect also
-            # refreshes the WS "last message" timestamp, which keeps the
-            # staleness-gated backstop (below) from ever firing on a healthy —
-            # even if quiet — connection. Genuinely stuck sockets (no messages
-            # AND no reconnects) still get caught by that backstop.
+            # NOTE: no refresh_all() here. pyadc rotates the WebSocket token
+            # seamlessly (make-before-break, zero event gap), and when a real
+            # coverage gap does occur it publishes RECONNECTED and the
+            # AlarmBridge itself runs a one-shot REST resync. Refreshing on
+            # every CONNECTED event would just duplicate that work.
         elif message.current_state in (
             WebSocketState.DEAD,
             WebSocketState.DISCONNECTED,
