@@ -3,6 +3,7 @@
   "name": "Alarm.com (pyadc)",
   "codeowners": ["trentonamor24@gmail.com"],
   "config_flow": true,
+  "dependencies": ["frontend", "http", "websocket_api"],
   "documentation": "https://github.com/HA-ADC/pyadc/blob/main/README.md",
   "homekit": {},
   "integration_type": "hub",

@@ -3,18 +3,47 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.loader import async_get_integration
 
 from pyadc.exceptions import AuthenticationFailed, ServiceUnavailable
 
+from . import websocket_api
 from .const import CONF_BASE_URL, CONF_MFA_COOKIE, CONF_PASSWORD, CONF_SEAMLESS_TOKEN, CONF_USERNAME, DATA_BRIDGE, DOMAIN
 from .hub import AlarmHub
 
 log = logging.getLogger(__name__)
+
+# The bundled WebRTC card streams cameras directly browser <-> ADC Janus, so
+# live view works without aiortc (uninstallable on HA OS). Served from www/
+# and auto-loaded on every dashboard — no manual Lovelace resource needed.
+_CARD_URL = f"/{DOMAIN}/adc-webrtc-card.js"
+
+
+async def _async_register_frontend(hass: HomeAssistant) -> None:
+    """Serve and auto-load the WebRTC card (idempotent per HA instance)."""
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if domain_data.get("_frontend_registered"):
+        return
+    domain_data["_frontend_registered"] = True
+
+    card_path = Path(__file__).parent / "www" / "adc-webrtc-card.js"
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(_CARD_URL, str(card_path), cache_headers=False)]
+    )
+    # Cache-bust with version AND file mtime: the version alone is not enough
+    # because dev deploys (and hotfixes) change the file without changing the
+    # version, leaving browsers running stale card code.
+    integration = await async_get_integration(hass, DOMAIN)
+    mtime = int(await hass.async_add_executor_job(lambda: card_path.stat().st_mtime))
+    add_extra_js_url(hass, f"{_CARD_URL}?v={integration.version}.{mtime}")
 
 PLATFORMS: list[Platform] = [
     Platform.ALARM_CONTROL_PANEL,
@@ -38,6 +67,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Ensure the UI option is always off so users aren't confused.
     if not entry.pref_disable_polling:
         hass.config_entries.async_update_entry(entry, pref_disable_polling=True)
+
+    websocket_api.async_register(hass)
+    await _async_register_frontend(hass)
 
     hub = AlarmHub(
         hass,

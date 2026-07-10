@@ -19,7 +19,7 @@ Where possible, use local control for smart home devices that are natively suppo
 - Config flow with username/password, OTP/2FA, and device trust
 - Utilizing official api endpoints and websocket messages to help ensure reliability
 - Large amount of device support
-- Camera support — still snapshots, WebRTC live streaming, and per-camera person / vehicle / animal / package detection sensors
+- Camera support — still snapshots, WebRTC live streaming (bundled custom card, works on HA OS), and per-camera person / vehicle / animal / package detection sensors
 - Optimistic state updates — UI reflects changes instantly before server confirmation
 - Seamless token rotation — persisted across restarts for fast re-authentication
 - Custom arming services (`arm_away_options`, `arm_stay_options`, `arm_night_options`) with silent arming, force bypass, and no-entry-delay options
@@ -36,7 +36,7 @@ Below is a table of the currently supported device types. Under the communiy tes
 |--------|------------------|-------------|-----------|-------|
 | Battery levels | ✅ <br/> Yale Assure Lock | `sensor` (%) | WebSocket | Per-device diagnostic |
 | Camera object detection (person / vehicle / animal / package) | ✅ <br/> | `binary_sensor` (MOTION) | WebSocket | Four momentary sensors per camera; auto-clear ~10s after the last detection event. Requires video analytics on the camera/plan. |
-| Cameras | ✅ <br/> | `camera` | REST + WebRTC | Still snapshots always work. Live view streams via ADC's Janus gateway and needs the optional `aiortc` package (`pyadc[webrtc]`); without it the entity is snapshot-only. |
+| Cameras | ✅ <br/> | `camera` | REST + WebRTC | Still snapshots always work. Live view works out of the box via the bundled **`adc-webrtc-card`** (the browser streams directly from ADC's Janus gateway — nothing to install). HA's *native* stream view (more-info dialog, picture-glance live) additionally needs the optional `aiortc` package, which cannot be installed on HA OS. See "Camera live view" below. |
 | CO detectors | 🟧 <br/> | `binary_sensor` (CO) | WebSocket | |
 | Color-temp lights | ✅ <br/> Zipato RGBW Bulb | `light` | WebSocket | Warm/cool white |
 | Contact sensors (door/window) | ✅ <br/> QS1135-840 | `binary_sensor` (DOOR) | WebSocket | |
@@ -99,7 +99,7 @@ Add this repository as a custom HACS integration source, then install `alarmdotc
 
 - Home Assistant 2024.11+ (the camera platform uses HA's async WebRTC provider API)
 - `pyadc` — pinned by git tag in `manifest.json` and installed by HA automatically
-- Optional: `aiortc` (`pip install "pyadc[webrtc]"` into HA's venv) for live camera streaming — see the Cameras row above
+- Optional: `aiortc` (`pip install "pyadc[webrtc]"` into HA's venv) for HA's *native* camera stream view. **Not installable on HA OS** (aiortc pins `av<17`, HA core ships `av>=17`) — use the bundled `adc-webrtc-card` there instead, which needs no extra packages.
 
 ---
 
@@ -118,6 +118,71 @@ The integration uses a UI config flow:
 > The manual reauth prompt only appears if your actual Alarm.com **password** is no longer valid.
 
 The `mfa_cookie` is stored securely in the HA config entry and reused on restart.
+
+---
+
+## Camera live view
+
+There are two live-view paths; snapshots always work regardless.
+
+### Bundled WebRTC card (recommended — works everywhere, including HA OS)
+
+The integration ships `adc-webrtc-card` and **auto-loads it on every
+dashboard** — no HACS plugin, no manual Lovelace resource, nothing extra to
+install. The card speaks the Janus protocol directly from your browser to
+Alarm.com (the same flow ADC's own web app uses), so no extra Python packages
+are needed and no media passes through Home Assistant.
+
+**Adding the card:** edit a dashboard → **Add card** → search for
+"Alarm.com WebRTC Camera" (or add it by YAML):
+
+```yaml
+type: custom:adc-webrtc-card
+entity: camera.front_doorbell
+```
+
+#### The two modes
+
+| | Tap-to-play (default) | Kiosk (`autoplay: true`) |
+|---|---|---|
+| On page load | Shows the camera snapshot with a ▶ button | Starts streaming immediately |
+| Stream drops mid-play | Reconnects automatically | Reconnects automatically |
+| Sustained outage (internet/ADC down) | Gives up after 5 straight failed attempts → "tap to retry" | Never gives up — keeps retrying every ≤30 s |
+| Best for | Normal dashboards you browse | Wall tablets / always-on displays |
+
+```yaml
+type: custom:adc-webrtc-card
+entity: camera.front_doorbell
+autoplay: true
+```
+
+In both modes a dropped stream (camera hiccup, network blip, ADC's periodic
+relay-session expiry, hourly token rollover) shows "Reconnecting…" and
+resumes on its own — the retry counter resets every time video comes back,
+so a playing stream survives ADC's routine session kills indefinitely. Each
+reconnect fetches fresh credentials, with exponential backoff
+(2 s → 4 s → … → 30 s) between failed attempts. Pressing **stop** always
+stays stopped.
+
+The card also falls back automatically between ADC's HD and SD relay
+endpoints — some camera models only deliver video on one of them.
+
+> **Notes:**
+> - The browser must be able to reach `*.alarm.com`. Live view works when
+>   accessing HA remotely too — media flows browser ↔ ADC, not through your
+>   HA instance.
+> - After upgrading the integration, hard-refresh the dashboard once
+>   (Ctrl/Cmd+Shift+R) if a card misbehaves — the card URL is cache-busted
+>   per release, but an already-open tab keeps the old module until reload.
+
+### Native HA stream (optional, not on HA OS)
+
+With the `aiortc` package installed in HA's venv (`pip install
+"pyadc[webrtc]"`), camera entities also advertise HA's native WebRTC stream —
+live view in the more-info dialog and standard picture cards. aiortc pins
+`av<17` while HA core ships `av>=17`, so this only works on installs where
+you control the venv (e.g. HA Core / devcontainer), **not HA OS**. Without
+aiortc the entity is snapshot-only and the bundled card is the live path.
 
 ---
 
@@ -154,9 +219,11 @@ alarmdotcom_ha/
     ├── services.yaml         # arm_away/stay/night_options custom services
     ├── strings.json          # Config flow UI string keys
     ├── translations/en.json  # English UI strings
+    ├── websocket_api.py      # WS command serving stream credentials to the card
+    ├── www/adc-webrtc-card.js # Bundled card: browser ↔ ADC Janus live view (no aiortc)
     ├── alarm_control_panel.py
     ├── binary_sensor.py      # Sensors + per-camera person/vehicle/animal/package detection
-    ├── camera.py             # Snapshots + WebRTC live view via ADC Janus gateway
+    ├── camera.py             # Snapshots + native WebRTC live view (needs optional aiortc)
     ├── climate.py            # Full feature set: FAN_ONLY, humidity, presets, hvac_action
     ├── cover.py              # GarageDoor (GARAGE) + Gate (GATE device class)
     ├── image.py              # Image sensors + panel/PIR cameras — 30 min poll, primed at startup

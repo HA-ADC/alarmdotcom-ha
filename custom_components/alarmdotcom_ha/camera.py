@@ -76,7 +76,13 @@ class AdcCamera(AdcEntity[Camera], HaCamera):
         HaCamera.__init__(self)
         self._attr_unique_id = f"{device.resource_id}_camera"
         self._attr_name = None  # entity name = device name
-        self._attr_supported_features = CameraEntityFeature.STREAM
+        # HA's native WebRTC path needs the aiortc bridge (see janus.py).
+        # Without it, don't advertise STREAM — the more-info dialog then shows
+        # the snapshot instead of an always-failing stream attempt; live view is
+        # available through the bundled adc-webrtc-card instead.
+        self._attr_supported_features = (
+            CameraEntityFeature.STREAM if HAS_AIORTC else CameraEntityFeature(0)
+        )
         # Active Janus sessions keyed by HA WebRTC session_id
         self._janus_sessions: dict[str, JanusSession] = {}
         # Pre-queue for trickle candidates that arrive before JanusSession is ready.
