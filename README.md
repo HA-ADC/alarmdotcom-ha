@@ -21,6 +21,7 @@ Where possible, use local control for smart home devices that are natively suppo
 - Large amount of device support
 - Camera support — still snapshots, WebRTC live streaming (bundled custom card, works on HA OS), and per-camera person / vehicle / animal / package detection sensors
 - Optimistic state updates — UI reflects changes instantly before server confirmation
+- Self-healing garage doors & gates — a cover left stuck in "opening"/"closing" is automatically re-checked against the physical device and corrected, instead of hanging on the transitional state until a restart
 - Seamless token rotation — persisted across restarts for fast re-authentication
 - Custom arming services (`arm_away_options`, `arm_stay_options`, `arm_night_options`) with silent arming, force bypass, and no-entry-delay options
 
@@ -41,9 +42,9 @@ Below is a table of the currently supported device types. Under the communiy tes
 | Color-temp lights | ✅ <br/> Zipato RGBW Bulb | `light` | WebSocket | Warm/cool white |
 | Contact sensors (door/window) | ✅ <br/> QS1135-840 | `binary_sensor` (DOOR) | WebSocket | |
 | Dimmable switches | ✅ <br/> | `switch` | WebSocket | |
-| Garage doors | ✅  <br/> | `cover` (GARAGE) | WebSocket | |
+| Garage doors | ✅  <br/> | `cover` (GARAGE) | WebSocket | Self-healing: a door left in opening/closing is actively re-polled and corrected rather than latching on the transitional state |
 | Gas sensors | 🟧 <br/> | `binary_sensor` (GAS) | WebSocket | This is I assume a propane sensor |
-| Gates | 🟧 <br/> | `cover` (GATE) | WebSocket | |
+| Gates | 🟧 <br/> | `cover` (GATE) | WebSocket | Self-healing stuck opening/closing, same as garage doors |
 | Glassbreak sensors | ✅ <br/> States are reporting on IQ4. Have not been able to trigger a glass break sound to test that state. | `binary_sensor` (SOUND) | WebSocket | |
 | Image sensors | 🟧 <br/> | `image` + `button` | Poll (30 min) | "Peek In" button requests an on-demand capture; the image refreshes within seconds of the upload. |
 | Lights (on/off, dimmable) | ✅ <br/> Zipato RGBW Bulb | `light` | WebSocket | These would be physical light bulbs. |
