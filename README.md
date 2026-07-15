@@ -134,13 +134,30 @@ install. The card speaks the Janus protocol directly from your browser to
 Alarm.com (the same flow ADC's own web app uses), so no extra Python packages
 are needed and no media passes through Home Assistant.
 
-**Adding the card:** edit a dashboard → **Add card** → search for
-"Alarm.com WebRTC Camera" (or add it by YAML):
+**Adding the card**
 
+Because the card auto-loads, there is **no Lovelace resource to register** — it
+is available as soon as the integration is installed. Add it to a dashboard
+either way:
+
+*Via the UI:*
+1. Open the dashboard → **Edit dashboard** (pencil, top-right) → **+ Add card**.
+2. Search for **"Alarm.com WebRTC Camera"** and select it.
+3. Choose the camera in the **Entity** field (e.g. `camera.front_doorbell`) and **Save**.
+
+*Via YAML:*
 ```yaml
 type: custom:adc-webrtc-card
 entity: camera.front_doorbell
 ```
+
+**Options:**
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `entity` | yes | — | The camera entity to stream (must start with `camera.`). |
+| `autoplay` | no | `false` | Start streaming on page load and keep retrying forever — kiosk mode (see below). |
+| `hd` | no | `true` | Which ADC relay to try first: `true` = HD, `false` = SD. The card automatically falls back to the other relay if no video arrives, so you rarely need this — set `hd: false` only for a camera you know streams on SD, to skip the ~12 s HD probe. |
 
 #### The two modes
 
