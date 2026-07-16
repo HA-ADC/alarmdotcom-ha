@@ -36,6 +36,15 @@ const RECONNECT_BASE_MS = 2000;
 const RECONNECT_MAX_DELAY_MS = 30000;
 const RECONNECT_MAX_ATTEMPTS = 5;
 
+// Lovelace re-layouts (e.g. rotating a phone changes the masonry column
+// count) *reparent* card elements: disconnectedCallback fires, then
+// connectedCallback moments later. Tearing down on every disconnect would
+// kill the stream on rotation — and the instant reconnect races the old
+// session's teardown (same fixed mountpoint name, token re-mint), which can
+// surface a bogus credentials error. So teardown is deferred: if the card
+// reattaches within the grace period, the stream just keeps playing.
+const DISCONNECT_GRACE_MS = 1000;
+
 class JanusStream {
   /**
    * @param {object} info  result of alarmdotcom_ha/camera_stream_info
@@ -358,6 +367,7 @@ class AdcWebrtcCard extends HTMLElement {
     this._retryCount = 0;
     this._retryTimer = null;
     this._userStopped = false;
+    this._disconnectGrace = null;
   }
 
   setConfig(config) {
@@ -385,6 +395,27 @@ class AdcWebrtcCard extends HTMLElement {
   }
 
   connectedCallback() {
+    if (this._disconnectGrace) {
+      // Reattached within the grace period — a re-layout reparent, not a
+      // removal. The PC and MediaStream survived the DOM move; just make
+      // sure the (muted) video element resumes rendering.
+      clearTimeout(this._disconnectGrace);
+      this._disconnectGrace = null;
+      const video = this.shadowRoot?.getElementById("video");
+      if (this._state === "playing" && video?.paused) {
+        video.play().catch(() => {});
+      }
+      // A drop that hit while detached couldn't schedule a reconnect
+      // (_scheduleReconnect bails when !isConnected) — pick it up now.
+      if (
+        this._state === "connecting" &&
+        !this._stream &&
+        !this._retryTimer &&
+        !this._userStopped
+      ) {
+        this._connect(this._config?.hd ?? true);
+      }
+    }
     this._render();
     this._onFsChange = () => this._syncFullscreenBadge();
     document.addEventListener("fullscreenchange", this._onFsChange);
@@ -395,7 +426,11 @@ class AdcWebrtcCard extends HTMLElement {
   disconnectedCallback() {
     document.removeEventListener("fullscreenchange", this._onFsChange);
     document.removeEventListener("webkitfullscreenchange", this._onFsChange);
-    this._stop("card removed");
+    clearTimeout(this._disconnectGrace);
+    this._disconnectGrace = setTimeout(() => {
+      this._disconnectGrace = null;
+      if (!this.isConnected) this._stop("card removed");
+    }, DISCONNECT_GRACE_MS);
   }
 
   // ---------------------------------------------------------------- UI --
