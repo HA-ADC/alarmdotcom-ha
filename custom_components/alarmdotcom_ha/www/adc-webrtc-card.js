@@ -386,10 +386,15 @@ class AdcWebrtcCard extends HTMLElement {
 
   connectedCallback() {
     this._render();
+    this._onFsChange = () => this._syncFullscreenBadge();
+    document.addEventListener("fullscreenchange", this._onFsChange);
+    document.addEventListener("webkitfullscreenchange", this._onFsChange);
     if (this._config?.autoplay && this._state === "idle") this._play();
   }
 
   disconnectedCallback() {
+    document.removeEventListener("fullscreenchange", this._onFsChange);
+    document.removeEventListener("webkitfullscreenchange", this._onFsChange);
     this._stop("card removed");
   }
 
@@ -406,6 +411,12 @@ class AdcWebrtcCard extends HTMLElement {
             width: 100%;
             aspect-ratio: 16 / 9;
             background: #000;
+          }
+          .frame:fullscreen,
+          .frame:-webkit-full-screen {
+            aspect-ratio: auto;
+            width: 100%;
+            height: 100%;
           }
           img, video {
             position: absolute;
@@ -431,17 +442,22 @@ class AdcWebrtcCard extends HTMLElement {
             padding: 8px;
           }
           .overlay .icon { font-size: 48px; line-height: 1; }
-          .badge {
+          .badges {
             position: absolute;
             top: 8px;
             right: 8px;
-            padding: 2px 8px;
-            border-radius: 10px;
+            display: none;
+            gap: 8px;
+          }
+          .badge {
+            padding: 4px 10px;
+            border-radius: 12px;
             background: rgba(0, 0, 0, 0.6);
             color: #fff;
-            font: 12px sans-serif;
+            font: 13px/1.4 sans-serif;
             cursor: pointer;
-            display: none;
+            user-select: none;
+            -webkit-user-select: none;
           }
           .spin {
             width: 36px; height: 36px;
@@ -453,14 +469,17 @@ class AdcWebrtcCard extends HTMLElement {
           @keyframes s { to { transform: rotate(360deg); } }
         </style>
         <ha-card>
-          <div class="frame">
+          <div class="frame" id="frame">
             <img id="poster" alt="" />
             <video id="video" autoplay playsinline muted style="display:none"></video>
             <div class="overlay" id="overlay">
               <div class="icon">▶</div>
               <div id="msg">Live view</div>
             </div>
-            <div class="badge" id="stop">■ Stop</div>
+            <div class="badges" id="badges">
+              <div class="badge" id="fs" title="Full screen">⛶</div>
+              <div class="badge" id="stop">■ Stop</div>
+            </div>
           </div>
         </ha-card>
       `;
@@ -468,6 +487,9 @@ class AdcWebrtcCard extends HTMLElement {
         if (this._state === "idle" || this._state === "error") this._play();
       };
       this.shadowRoot.getElementById("stop").onclick = () => this._stop("user");
+      this.shadowRoot.getElementById("fs").onclick = () => this._toggleFullscreen();
+      this.shadowRoot.getElementById("video").ondblclick = () =>
+        this._toggleFullscreen();
       this._rendered = true;
     }
     this._updatePoster();
@@ -490,12 +512,12 @@ class AdcWebrtcCard extends HTMLElement {
     const icon = overlay.querySelector(".icon");
     const video = $("video");
     const poster = $("poster");
-    const stop = $("stop");
+    const badges = $("badges");
 
     const playing = this._state === "playing";
     video.style.display = playing ? "" : "none";
     poster.style.display = playing ? "none" : "";
-    stop.style.display = playing ? "block" : "none";
+    badges.style.display = playing ? "flex" : "none";
     overlay.style.display = playing ? "none" : "flex";
 
     if (this._state === "idle") {
@@ -511,6 +533,44 @@ class AdcWebrtcCard extends HTMLElement {
       icon.classList.remove("spin");
       msg.textContent = `Stream error: ${this._error} — tap to retry`;
     }
+  }
+
+  // ------------------------------------------------------------ fullscreen --
+
+  _isFullscreen() {
+    return !!(this.shadowRoot.fullscreenElement || document.fullscreenElement);
+  }
+
+  /**
+   * Fullscreen the frame (so the reconnect overlay and badges stay visible)
+   * via the standard API where available. iOS Safari / the HA iOS app don't
+   * support element fullscreen — fall back to the video element's native
+   * fullscreen player (webkitEnterFullscreen), which only works mid-playback.
+   */
+  _toggleFullscreen() {
+    const frame = this.shadowRoot.getElementById("frame");
+    const video = this.shadowRoot.getElementById("video");
+    if (this._isFullscreen()) {
+      (document.exitFullscreen ?? document.webkitExitFullscreen)?.call(document);
+      return;
+    }
+    if (frame.requestFullscreen) {
+      frame
+        .requestFullscreen()
+        .catch(() => video.webkitEnterFullscreen?.());
+    } else if (frame.webkitRequestFullscreen) {
+      frame.webkitRequestFullscreen();
+    } else if (video.webkitEnterFullscreen) {
+      video.webkitEnterFullscreen();
+    }
+  }
+
+  _syncFullscreenBadge() {
+    const fs = this.shadowRoot?.getElementById("fs");
+    if (!fs) return;
+    const active = this._isFullscreen();
+    fs.textContent = active ? "⛶ Exit" : "⛶";
+    fs.title = active ? "Exit full screen" : "Full screen";
   }
 
   _setState(state, error = "") {
@@ -664,6 +724,9 @@ class AdcWebrtcCard extends HTMLElement {
     this._userStopped = true;
     this._clearRetryTimer();
     this._teardown();
+    if (this._isFullscreen()) {
+      (document.exitFullscreen ?? document.webkitExitFullscreen)?.call(document);
+    }
     this._setState("idle");
   }
 }
