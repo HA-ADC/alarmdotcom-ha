@@ -23,6 +23,7 @@ Where possible, use local control for smart home devices that are natively suppo
 - Optimistic state updates — UI reflects changes instantly before server confirmation
 - Self-healing garage doors & gates — a cover left stuck in "opening"/"closing" is automatically re-checked against the physical device and corrected, instead of hanging on the transitional state until a restart
 - Seamless token rotation — persisted across restarts for fast re-authentication
+- Z-Wave switch button actions — single/double/triple taps and holds on ADC Z-Wave lights & switches as `Scene 001` / `Scene 002` event entities and "Scene action" device triggers, matching Home Assistant's Z-Wave JS integration
 - Custom arming services (`arm_away_options`, `arm_stay_options`, `arm_night_options`) with silent arming, force bypass, and no-entry-delay options
 
 ## Supported Devices
@@ -220,6 +221,31 @@ triggers and sorting group it correctly):
 Home Assistant stores this override in the entity registry and it takes
 precedence over the integration's default — no configuration in the integration
 is required, and the choice survives restarts.
+
+### Switch taps, double-taps and holds (Central Scene)
+
+Z-Wave light switches that report **Central Scene** notifications to Alarm.com
+(most modern Z-Wave switches) expose their paddle actions the same way Home
+Assistant's Z-Wave JS integration does:
+
+| Entity / trigger | Meaning |
+|---|---|
+| `event.<light>_scene_001` | Top / **on** paddle |
+| `event.<light>_scene_002` | Bottom / **off** paddle |
+| Event types | `KeyPressed`, `KeyReleased`, `KeyHeldDown`, `KeyPressed2x` … `KeyPressed5x` |
+
+To automate on one, add a **Device** trigger → your light → **"Scene action on
+Scene 002 (off button)"** and pick a **Value** (e.g. `KeyPressed2x` for a
+double-tap down). Leave Value empty to fire on any action of that paddle.
+
+A single tap or a hold also turns the light on/off as usual, so automations on
+`KeyPressed` / `KeyHeldDown` run alongside the normal toggle. Double-taps and
+higher don't change the light, which makes them ideal as extra buttons.
+
+Every button event is also fired on the event bus as `alarmdotcom_ha_event`
+(with `device_id`, `scene`, `scene_id`, `value`, `key_attribute` and the raw
+ADC values), so you can use it in an **Event** trigger or watch it in
+**Developer Tools → Events**.
 
 ---
 

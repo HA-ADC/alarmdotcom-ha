@@ -29,12 +29,19 @@ import asyncio
 import aiohttp
 
 from pyadc import AlarmBridge
-from pyadc.events import EventBrokerTopic, ResourceEventMessage
+from pyadc.events import DeviceEventMessage, EventBrokerTopic, ResourceEventMessage
 from pyadc.websocket.client import ConnectionEvent, WebSocketState
 
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_track_time_interval
 
-from .const import CONF_SEAMLESS_TOKEN, WATER_METER_DEVICE_TYPE
+from .const import (
+    CONF_SEAMLESS_TOKEN,
+    DOMAIN,
+    EVENT_DEVICE,
+    WATER_METER_DEVICE_TYPE,
+    scene_id,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -91,6 +98,7 @@ class AlarmHub:
             base_url=base_url,
         )
         self._unsub_connection = None
+        self._unsub_device_events = None
         self._unsub_water_poll = None
         self._unsub_reconcile = None
         self._ws_connected: bool = False
@@ -110,6 +118,10 @@ class AlarmHub:
         self._unsub_connection = self._bridge.event_broker.subscribe(
             [EventBrokerTopic.CONNECTION_EVENT],
             self._handle_connection_event,
+        )
+        self._unsub_device_events = self._bridge.event_broker.subscribe(
+            [EventBrokerTopic.DEVICE_EVENT],
+            self._handle_device_event,
         )
         await self._bridge.start_websocket()
 
@@ -168,6 +180,37 @@ class AlarmHub:
                     device_type=WATER_METER_DEVICE_TYPE,
                 )
             )
+
+    def _handle_device_event(self, message: DeviceEventMessage) -> None:
+        """Re-fire a pyadc momentary device event (e.g. a double-tap) on the HA bus.
+
+        Every non-state event is fired, decoded or not, so it can be used as an
+        ``event`` trigger and so unknown event codes are visible in
+        Developer Tools > Events (listen for ``alarmdotcom_ha_event``).
+        """
+        if not isinstance(message, DeviceEventMessage):
+            return
+        device = dr.async_get(self._hass).async_get_device(
+            identifiers={(DOMAIN, message.device_id)}
+        )
+        event_type = message.event_type
+        if isinstance(event_type, float) and event_type.is_integer():
+            event_type = int(event_type)
+        self._hass.bus.async_fire(
+            EVENT_DEVICE,
+            {
+                "device_id": device.id if device else None,
+                "adc_device_id": message.device_id,
+                "name": device.name if device else None,
+                # Z-Wave JS-style Central Scene fields (None if not a scene event).
+                "scene": message.button,
+                "scene_id": scene_id(message.button) if message.button else None,
+                "value": message.action,
+                "key_attribute": message.key_attribute,
+                "adc_event_type": event_type,
+                "adc_event_value": message.event_value,
+            },
+        )
 
     def _handle_connection_event(self, message: ConnectionEvent) -> None:
         if message.current_state is WebSocketState.CONNECTED:
@@ -239,5 +282,8 @@ class AlarmHub:
         if self._unsub_connection is not None:
             self._unsub_connection()
             self._unsub_connection = None
+        if self._unsub_device_events is not None:
+            self._unsub_device_events()
+            self._unsub_device_events = None
         await self._bridge.stop()
         await self._session.close()

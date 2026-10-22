@@ -56,5 +56,37 @@
       "must_configure_mfa": "Your Alarm.com account requires two-factor authentication to be configured. Please log in at alarm.com and set up 2FA first.",
       "reauth_successful": "Re-authentication was successful."
     }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "scene_action": "Scene action on {subtype}"
+    },
+    "trigger_subtype": {
+      "scene_001": "Scene 001 (on button)",
+      "scene_002": "Scene 002 (off button)"
+    },
+    "extra_fields": {
+      "value": "Value"
+    }
+  },
+  "entity": {
+    "event": {
+      "scene": {
+        "name": "Scene {scene}",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "KeyPressed": "KeyPressed",
+              "KeyReleased": "KeyReleased",
+              "KeyHeldDown": "KeyHeldDown",
+              "KeyPressed2x": "KeyPressed2x",
+              "KeyPressed3x": "KeyPressed3x",
+              "KeyPressed4x": "KeyPressed4x",
+              "KeyPressed5x": "KeyPressed5x"
+            }
+          }
+        }
+      }
+    }
   }
 }
