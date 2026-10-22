@@ -102,6 +102,12 @@ _PRESET_MAP: dict[ThermostatSetpointType, str] = {
 }
 _PRESET_REVERSE: dict[str, ThermostatSetpointType] = {v: k for k, v in _PRESET_MAP.items()}
 
+# HA 2026.11 renamed the climate temperature members to ``native_*`` (the value
+# is in the entity's own unit and HA converts it for display); the old names
+# keep working through a shim until 2027.11. We implement the ``native_*`` API
+# and, only on older HA versions that lack it, alias the old names to it.
+_HA_HAS_NATIVE_CLIMATE_TEMPS = hasattr(ClimateEntity, "native_temperature_unit")
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -157,7 +163,7 @@ class AdcClimate(AdcEntity[Thermostat], ClimateEntity):
         self._attr_preset_modes = list(_PRESET_MAP.values())
 
     @property
-    def temperature_unit(self) -> str:
+    def native_temperature_unit(self) -> str:
         """Return temperature unit based on thermostat setting."""
         if self._device.temperature_unit == "C":
             return UnitOfTemperature.CELSIUS
@@ -176,12 +182,12 @@ class AdcClimate(AdcEntity[Thermostat], ClimateEntity):
         return _HVAC_ACTION_MAP.get(self._device.operating_state)
 
     @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         """Return current temperature."""
         return self._device.current_temperature
 
     @property
-    def target_temperature(self) -> float | None:
+    def native_target_temperature(self) -> float | None:
         """Return single target temperature (for HEAT or COOL mode)."""
         mode = self._device.state
         if mode in (ThermostatTemperatureMode.HEAT, ThermostatTemperatureMode.AUX_HEAT,
@@ -192,14 +198,21 @@ class AdcClimate(AdcEntity[Thermostat], ClimateEntity):
         return None
 
     @property
-    def target_temperature_high(self) -> float | None:
+    def native_target_temperature_high(self) -> float | None:
         """Return high target temperature (AUTO mode)."""
         return self._device.target_temperature_cool
 
     @property
-    def target_temperature_low(self) -> float | None:
+    def native_target_temperature_low(self) -> float | None:
         """Return low target temperature (AUTO mode)."""
         return self._device.target_temperature_heat
+
+    if not _HA_HAS_NATIVE_CLIMATE_TEMPS:  # pragma: no cover - HA < 2026.11
+        temperature_unit = native_temperature_unit
+        current_temperature = native_current_temperature
+        target_temperature = native_target_temperature
+        target_temperature_high = native_target_temperature_high
+        target_temperature_low = native_target_temperature_low
 
     @property
     def current_humidity(self) -> float | None:

@@ -190,9 +190,12 @@ class AlarmHub:
         """
         if not isinstance(message, DeviceEventMessage):
             return
-        device = dr.async_get(self._hass).async_get_device(
-            identifiers={(DOMAIN, message.device_id)}
-        )
+        registry = dr.async_get(self._hass)
+        identifier = (DOMAIN, message.device_id)
+        if hasattr(registry, "async_get_device_by_identifier"):
+            device = registry.async_get_device_by_identifier(identifier, self._entry.entry_id)
+        else:  # HA < 2026.11
+            device = registry.async_get_device(identifiers={identifier})
         event_type = message.event_type
         if isinstance(event_type, float) and event_type.is_integer():
             event_type = int(event_type)
